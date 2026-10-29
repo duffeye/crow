@@ -14,4 +14,10 @@
     <string name="status_field_description">Connection, capture state, battery level, and recording time.</string>
     <string name="mode_field_name">Mode</string>
     <string name="mode_field_description">Shows the current mode. Tap to switch between Photo and Video while idle.</string>
+    <string name="battery_field_name">Battery</string>
+    <string name="battery_field_description">Camera battery remaining, as a percentage. Read-only.</string>
+    <string name="video_left_field_name">Video left</string>
+    <string name="video_left_field_description">Camera-estimated recording time remaining at the current settings. Read-only.</string>
+    <string name="photos_left_field_name">Photos left</string>
+    <string name="photos_left_field_description">Camera-estimated number of photos remaining at the current settings. Read-only.</string>
 </resources>

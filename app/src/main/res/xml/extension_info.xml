@@ -5,6 +5,9 @@
     <DataType typeId="camera-photo" displayName="@string/photo_field_name" description="@string/photo_field_description" graphical="true" icon="@drawable/ic_camera_field" />
     <DataType typeId="camera-status" displayName="@string/status_field_name" description="@string/status_field_description" graphical="true" icon="@drawable/ic_camera_field" />
     <DataType typeId="camera-mode" displayName="@string/mode_field_name" description="@string/mode_field_description" graphical="true" icon="@drawable/ic_camera_field" />
+    <DataType typeId="camera-battery" displayName="@string/battery_field_name" description="@string/battery_field_description" graphical="true" icon="@drawable/ic_camera_field" />
+    <DataType typeId="camera-video-left" displayName="@string/video_left_field_name" description="@string/video_left_field_description" graphical="true" icon="@drawable/ic_camera_field" />
+    <DataType typeId="camera-photos-left" displayName="@string/photos_left_field_name" description="@string/photos_left_field_description" graphical="true" icon="@drawable/ic_camera_field" />
     <BonusAction actionId="shutter" displayName="@string/camera_shutter" />
     <BonusAction actionId="photo" displayName="@string/camera_photo_mode" />
     <BonusAction actionId="video" displayName="@string/camera_video_mode" />

@@ -43,7 +43,7 @@ class RideExtensionTest {
         extension.types.single { it.typeId == id }.startView(app, config, emitter)
         ShadowLooper.idleMainLooper()
         val header = updates.mapNotNull { it.getString("value") }.map { JSONObject(it) }.single { it.has("showHeader") }
-        assertEquals(id == "camera" || id == "camera-status", header.getBoolean("showHeader"))
+        assertEquals(id !in setOf("camera-record", "camera-photo", "camera-mode"), header.getBoolean("showHeader"))
         @Suppress("DEPRECATION")
         val remote = updates.mapNotNull { it.getParcelable<RemoteViews>("view") }.single()
         val view = remote.apply(app, FrameLayout(app))
@@ -52,7 +52,7 @@ class RideExtensionTest {
         return view
     }
 
-    @Test fun allFiveFieldsAreRegisteredAndSeparatePreviewsHaveNoClickActions() {
+    @Test fun allEightFieldsAreRegisteredAndSeparatePreviewsHaveNoClickActions() {
         val app = RuntimeEnvironment.getApplication()
         val extension = Robolectric.buildService(CrowExtension::class.java).get()
         val declared = mutableSetOf<String>()
@@ -63,8 +63,9 @@ class RideExtensionTest {
             }
         }
         assertEquals(extension.types.map { it.typeId }.toSet(), declared)
-        assertEquals(5, declared.size)
-        val values = mapOf("camera-record" to "Start", "camera-photo" to "Shoot", "camera-status" to "Ready", "camera-mode" to "Video")
+        assertEquals(8, declared.size)
+        val values = mapOf("camera-record" to "Start", "camera-photo" to "Shoot", "camera-status" to "Ready", "camera-mode" to "Video",
+            "camera-battery" to "85%", "camera-video-left" to "1:24:30", "camera-photos-left" to "1,234")
         for ((id, value) in values) {
             val view = field(extension, id, true)
             assertEquals(value, view.findViewById<TextView>(R.id.field_value).text.toString())
@@ -103,9 +104,9 @@ class RideExtensionTest {
         val app = RuntimeEnvironment.getApplication()
         val extension = Robolectric.buildService(CrowExtension::class.java).get()
         for (height in listOf(80, 96, 120, 160)) {
-            for (id in listOf("camera-record", "camera-photo", "camera-status", "camera-mode")) {
+            for (id in listOf("camera-record", "camera-photo", "camera-status", "camera-mode", "camera-battery", "camera-video-left", "camera-photos-left")) {
                 val view = field(extension, id, true, ViewConfig(30 to 10, 160 to height, 72, preview = true))
-                val viewport = if (id == "camera-status") height - 32 else height
+                val viewport = if (id in setOf("camera-record", "camera-photo", "camera-mode")) height else height - 32
                 view.measure(View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(viewport, View.MeasureSpec.EXACTLY))
                 view.layout(0, 0, view.measuredWidth, view.measuredHeight)
                 val body = view.findViewById<View>(R.id.field_body)
@@ -115,6 +116,36 @@ class RideExtensionTest {
                 if (height <= 96) assertEquals(View.GONE, view.findViewById<View>(R.id.field_detail).visibility)
             }
         }
+    }
+
+    @Test fun capacityTilesRemainReadOnlyAndDoNotDisplayStaleOrInventedValues() {
+        val app = RuntimeEnvironment.getApplication()
+        val extension = Robolectric.buildService(CrowExtension::class.java).get()
+        val session = CameraSession.get(app)
+        val link = session.link
+        link.ready = true; link.mode = 1; link.state = 1; link.battery = 7
+        link.videoSecondsRemaining = 5070; link.photosRemaining = 1234
+        link.statusAt = SystemClock.elapsedRealtime()
+        try {
+            for ((id, expected) in mapOf("camera-battery" to "7%", "camera-video-left" to "1:24:30", "camera-photos-left" to "1,234")) {
+                val view = field(extension, id, false)
+                assertEquals(expected, view.findViewById<TextView>(R.id.field_value).text.toString())
+                assertFalse(view.hasOnClickListeners())
+                assertEquals(View.GONE, view.findViewById<View>(R.id.field_header).visibility)
+            }
+            link.busy = true
+            assertEquals("1:24:30", field(extension, "camera-video-left", false).findViewById<TextView>(R.id.field_value).text.toString())
+            link.videoSecondsRemaining = 0; link.photosRemaining = 0
+            assertEquals("0:00", field(extension, "camera-video-left", false).findViewById<TextView>(R.id.field_value).text.toString())
+            assertEquals("0", field(extension, "camera-photos-left", false).findViewById<TextView>(R.id.field_value).text.toString())
+            link.photosRemaining = -1
+            assertEquals("—", field(extension, "camera-photos-left", false).findViewById<TextView>(R.id.field_value).text.toString())
+            link.statusAt = SystemClock.elapsedRealtime() - 6000
+            for (id in listOf("camera-battery", "camera-video-left", "camera-photos-left"))
+                assertEquals("Offline", field(extension, id, false).findViewById<TextView>(R.id.field_value).text.toString())
+        } finally { session.release(extension) }
+        assertEquals(-1L, link.videoSecondsRemaining)
+        assertEquals(-1L, link.photosRemaining)
     }
 
     @Test

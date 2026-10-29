@@ -24,7 +24,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Karoo keeps this service bound while the extension is enabled. It owns one shared BLE session. */
-class CrowExtension : KarooExtension("crow", "8"), CameraLink.Listener {
+class CrowExtension : KarooExtension("crow", "9"), CameraLink.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val timers = mutableSetOf<Runnable>()
     private val session by lazy { CameraSession.get(this) }
@@ -33,7 +33,9 @@ class CrowExtension : KarooExtension("crow", "8"), CameraLink.Listener {
     private var destroyed = false
     private var connected = false
 
-    override val types = listOf("camera", "camera-record", "camera-photo", "camera-status", "camera-mode").map { fieldId -> object : DataTypeImpl("crow", fieldId) {
+    private fun isActionField(id: String) = id == "camera-record" || id == "camera-photo" || id == "camera-mode"
+
+    override val types = listOf("camera", "camera-record", "camera-photo", "camera-status", "camera-mode", "camera-battery", "camera-video-left", "camera-photos-left").map { fieldId -> object : DataTypeImpl("crow", fieldId) {
         override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
             val cancelled = AtomicBoolean(false)
             val tick = object : Runnable {
@@ -52,7 +54,7 @@ class CrowExtension : KarooExtension("crow", "8"), CameraLink.Listener {
                     // Editing a ride profile must never connect to, or control, a real camera.
                     if (!config.preview) ensureSession()
                     // Action tiles draw their header inside the same click target; host headers cannot receive our clicks.
-                    emitter.onNext(UpdateGraphicConfig(showHeader = fieldId == "camera" || fieldId == "camera-status"))
+                    emitter.onNext(UpdateGraphicConfig(showHeader = !isActionField(fieldId)))
                     timers.add(tick)
                     tick.run()
                 }
@@ -147,12 +149,31 @@ class CrowExtension : KarooExtension("crow", "8"), CameraLink.Listener {
         val recording = fresh && mode == 1 && state == 3
         val idle = CameraControls.canSwitchMode(fresh, busy, state)
         val battery = if (config.preview) "85%" else if (link != null && link.battery >= 0) "${link.battery}%" else "—"
+        val actionField = isActionField(fieldId)
         var title: String
         var value: String
         var detail: String
         var command: String? = null
         var enabled = false
         when (fieldId) {
+            "camera-battery" -> {
+                title = "Camera battery remaining"
+                value = battery
+                detail = if (battery == "—") "Not reported" else "Camera battery"
+                enabled = true
+            }
+            "camera-video-left" -> {
+                title = "Recording capacity remaining"
+                value = CameraCapacity.videoTime(if (config.preview) 5070 else link?.videoSecondsRemaining ?: -1)
+                detail = if (value == "—") "Not reported" else "Video time remaining"
+                enabled = true
+            }
+            "camera-photos-left" -> {
+                title = "Photo storage remaining"
+                value = CameraCapacity.photoCount(if (config.preview) 1234 else link?.photosRemaining ?: -1)
+                detail = if (value == "—") "Not reported" else "Photos remaining"
+                enabled = true
+            }
             "camera-record" -> {
                 title = "Camera recording"
                 value = if (recording) "Stop" else "Start"
@@ -192,13 +213,15 @@ class CrowExtension : KarooExtension("crow", "8"), CameraLink.Listener {
         if (!fresh) {
             value = if (fieldId == "camera-status") { if (link?.ready == true) "No signal" else "Offline" } else "Offline"
             detail = "Open Crow to reconnect"
-            enabled = fieldId == "camera-status"
-        } else if (busy && fieldId != "camera-status") detail = "Waiting for camera…"
-        val actionField = fieldId != "camera-status"
+            enabled = !actionField
+        } else if (busy && actionField) detail = "Waiting for camera…"
         val heading = when (fieldId) {
             "camera-record" -> R.string.record_field_name
             "camera-photo" -> R.string.photo_field_name
             "camera-mode" -> R.string.mode_field_name
+            "camera-battery" -> R.string.battery_field_name
+            "camera-video-left" -> R.string.video_left_field_name
+            "camera-photos-left" -> R.string.photos_left_field_name
             else -> R.string.status_field_name
         }
         view.setTextViewText(R.id.field_title, context.getString(heading))

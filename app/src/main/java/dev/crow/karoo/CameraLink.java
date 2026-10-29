@@ -33,6 +33,7 @@ final class CameraLink {
     String message = "Turn on the Action 4, then find your camera.";
     boolean ready, busy;
     int mode = -1, state = -1, battery = -1, seconds;
+    long videoSecondsRemaining = -1, photosRemaining = -1;
     long statusAt;
 
     CameraLink(Context context, Listener listener) {
@@ -104,6 +105,7 @@ final class CameraLink {
         stopScanning(); cancel(connectTimeout); cancel(writeTimeout); cancel(commandTimeout);
         ready = false; busy = false; writing = false; pendingSeq = -1; targetMode = -1; statusAt = 0;
         mode = state = battery = -1; writes.clear(); tx = null;
+        videoSecondsRemaining = photosRemaining = -1;
         BluetoothGatt old = gatt; gatt = null;
         if (old != null) { old.disconnect(); old.close(); }
     }
@@ -208,7 +210,10 @@ final class CameraLink {
             if (!address.equals(preferences.getString("paired_address", null)))
                 preferences.edit().putString("paired_address", address).apply();
             mode = p[0] & 255; state = p[1] & 255; seconds = Protocol.u16(p, 5);
-            battery = (p[37] & 255) <= 100 ? p[37] & 255 : -1;
+            CameraCapacity capacity = CameraCapacity.fromStatus(p);
+            battery = capacity.battery;
+            videoSecondsRemaining = capacity.videoSeconds;
+            photosRemaining = capacity.photos;
             statusAt = android.os.SystemClock.elapsedRealtime();
             boolean captureNow = capturePlan.onStatus(mode, state);
             if (targetMode >= 0 && mode == targetMode) {

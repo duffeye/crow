@@ -12,7 +12,23 @@ An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead
 - Display camera-reported capture state, elapsed time, battery, and mode.
 - Disable controls after five seconds without live status; serialize BLE writes and time out failed operations. Shutter commands are never automatically retried.
 
-**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The separate-field styling and compact-layout fixes still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The latest layout, touch-target, and capacity additions still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+
+## Battery and storage tiles (0.6.0)
+
+Add these read-only fields from **Crow Camera** in your ride profile:
+
+| Tile | Value |
+| --- | --- |
+| **Battery** | Camera battery percentage, e.g. `85%` (not the Karoo battery). |
+| **Video left** | Camera-estimated recording time remaining at its current settings. Uses `m:ss` below one hour and `h:mm:ss` otherwise, e.g. `1:24:30`. |
+| **Photos left** | Camera-estimated number of photos remaining, e.g. `1,234`. |
+
+All three use the existing shared connection, native read-only headers, and compact text fitting. Zero is displayed as zero (no capacity left); unreported/invalid values display `—`. Stale or disconnected tiles display Offline rather than an old estimate. These are camera estimates, which can change with resolution, frame rate, photo format, or mode. They are not estimates of battery runtime or total SD-card size.
+
+DJI status push 1D02 supplies remaining photos at byte offset 19 (uint32), remaining video seconds at 23 (uint32), and battery percentage at 37. Values are little-endian; an all-ones storage value is treated as unavailable, not a count or duration. No camera setting changes or additional requests are triggered by these tiles.
+
+Validate the new tiles against the camera display in Photo and Video modes, after recording a clip/taking photos, and after reconnecting. Existing ride fields and controls keep their IDs and behavior.
 
 ## Full-field touch targets (0.5.3)
 
