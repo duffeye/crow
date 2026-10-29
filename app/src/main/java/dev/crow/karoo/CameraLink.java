@@ -9,7 +9,7 @@ import android.os.Looper;
 import java.security.SecureRandom;
 import java.util.*;
 
-/** Foreground-only BLE session. All state and GATT operations are serialized on the main thread. */
+/** Shared BLE link. All state and GATT operations are serialized on the main thread. */
 @android.annotation.SuppressLint("MissingPermission") // Activity gates BLE entry points with runtime permissions.
 @SuppressWarnings("deprecation")
 final class CameraLink {
@@ -231,11 +231,11 @@ final class CameraLink {
         }
     }
     void shutter() {
-        if (!fresh() || busy || !(mode == 5 && state == 1 || mode == 1 && (state == 1 || state == 3))) return;
+        if (!CameraControls.canShutter(fresh(), busy, mode, state)) return;
         command(0, 0x11, new byte[]{1, 1, 0, 0});
     }
     void switchMode(int requestedMode) {
-        if (!fresh() || busy || state != 1 || mode == requestedMode || !(requestedMode == 1 || requestedMode == 5)) return;
+        if (!CameraControls.canSwitchMode(fresh(), busy, state) || mode == requestedMode || !(requestedMode == 1 || requestedMode == 5)) return;
         targetMode = requestedMode;
         command(0x1d, 4, Protocol.modeSwitch(requestedMode));
     }

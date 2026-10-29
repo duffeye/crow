@@ -13,6 +13,7 @@ import java.util.Locale;
 
 public final class MainActivity extends Activity implements CameraLink.Listener {
     private CameraLink link;
+    private CameraSession session;
     private TextView message, status;
     private Button shutter, photoMode, videoMode;
     private LinearLayout devices;
@@ -24,7 +25,7 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
     private int dp(int n) { return (int) (getResources().getDisplayMetrics().density * n); }
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
-        link = new CameraLink(this, this);
+        session = CameraSession.get(this); link = session.link;
         ScrollView scroll = new ScrollView(this); scroll.setFitsSystemWindows(true);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(12), dp(12), dp(12)); scroll.addView(root); setContentView(scroll);
@@ -39,7 +40,7 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         videoMode = button(root, "Video mode", () -> link.switchMode(1));
         button(root, "Disconnect", () -> { link.close(); link.report("Disconnected. Recording may continue on the camera."); });
         button(root, "Forget camera", () -> { devices.removeAllViews(); link.forgetCamera(); });
-        text(root, "Keep this app open for control. Leaving it disconnects Bluetooth; it does not stop recording.", 14);
+        text(root, "Add Crow Camera to a Karoo ride screen for in-ride control. The enabled extension keeps the connection when you leave this app. Disconnecting never stops a camera recording.", 14);
         changed();
     }
     private TextView text(LinearLayout parent, String value, int size) {
@@ -76,21 +77,20 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         String state = !link.ready ? "Camera disconnected" : !fresh ? "Waiting for live status" : link.state == 3 ? "CAPTURING" : "Camera ready";
         if (fresh) state += String.format(Locale.ROOT, "\n%s • Battery %s\n%02d:%02d", modeName(link.mode), link.battery < 0 ? "—" : link.battery + "%", link.seconds / 60, link.seconds % 60);
         status.setText(state); status.setTextColor(fresh && link.state == 3 ? Color.rgb(255, 100, 100) : Color.WHITE);
-        boolean supported = link.mode == 1 || link.mode == 5;
-        shutter.setText(link.mode == 5 ? "Take photo" : link.state == 3 ? "Stop recording" : "Start recording");
-        shutter.setEnabled(fresh && supported && !link.busy && (link.state == 1 || link.state == 3 && link.mode == 1));
-        photoMode.setEnabled(fresh && !link.busy && link.state == 1 && link.mode != 5);
-        videoMode.setEnabled(fresh && !link.busy && link.state == 1 && link.mode != 1);
+        shutter.setText(CameraControls.shutterLabel(link.mode, link.state));
+        shutter.setEnabled(CameraControls.canShutter(fresh, link.busy, link.mode, link.state));
+        photoMode.setEnabled(CameraControls.canSwitchMode(fresh, link.busy, link.state) && link.mode != 5);
+        videoMode.setEnabled(CameraControls.canSwitchMode(fresh, link.busy, link.state) && link.mode != 1);
     }
     private String modeName(int mode) {
         switch (mode) { case 1: return "Video"; case 5: return "Photo"; case 0: return "Slow motion"; case 2: return "Timelapse"; case 10: return "Hyperlapse"; default: return "Mode " + mode; }
     }
     @Override protected void onResume() {
-        super.onResume(); handler.post(refresh);
+        super.onResume(); session.acquire(this); handler.post(refresh);
         for (String permission : neededPermissions()) if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) return;
         link.reconnectSaved();
     }
     @Override protected void onPause() {
-        handler.removeCallbacks(refresh); link.close(); link.report("Disconnected. Recording may continue on the camera."); super.onPause();
+        handler.removeCallbacks(refresh); session.release(this); super.onPause();
     }
 }

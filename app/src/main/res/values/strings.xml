@@ -1,0 +1,9 @@
+<resources>
+    <string name="extension_name">Crow Camera</string>
+    <string name="camera_field_name">Camera control</string>
+    <string name="camera_field_description">Action 4 status and shutter. Use a full-width field; taller fields include Photo/Video buttons.</string>
+    <string name="camera_shutter">Camera shutter</string>
+    <string name="camera_photo_mode">Camera: Photo mode</string>
+    <string name="camera_video_mode">Camera: Video mode</string>
+    <string name="camera_reconnect">Reconnect camera</string>
+</resources>

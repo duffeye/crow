@@ -20,4 +20,4 @@ trap 'rm -f "$license_input"; if [[ -n "${staging:-}" ]]; then rm -rf "$staging"
 printf 'y\n%.0s' {1..100} > "$license_input"
 "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses < "$license_input"
 "$sdkmanager" --sdk_root="$ANDROID_HOME" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
-./gradlew --no-daemon testDebugUnitTest assembleDebug lintDebug
+./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
