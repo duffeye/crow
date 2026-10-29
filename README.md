@@ -2,6 +2,12 @@
 
 An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead Karoo 3** and **DJI Osmo Action 4**. No phone, Wi-Fi connection, DJI Mimo session, or cloud account is needed by the app.
 
+## Download and install
+
+Download the `.apk` attachment from [GitHub Releases](https://github.com/duffeye/crow/releases). Public release downloads do not require a GitHub account. Choose the APK under **Assets**, rather than a source-code archive. The release notes include sideloading instructions and known limitations. Current releases are debug-signed pre-releases; an update from another signing key requires uninstalling the old app and pairing again.
+
+Maintainers: pushing a `vX.Y.Z` tag runs the Android checks and, after they pass, publishes a pre-release with the versioned APK and SHA-256 checksum. The tag must match `versionName` in `app/build.gradle`, and `release-notes/vX.Y.Z.md` must exist. Publication uses GitHub Actions' repository token; no additional secret is required.
+
 ## Current capabilities
 
 - Discover cameras advertising DJI's supported remote protocol and select a specific camera.
@@ -12,7 +18,7 @@ An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead
 - Display camera-reported capture state, elapsed time, battery, and mode.
 - Disable controls after five seconds without live status; serialize BLE writes and time out failed operations. Shutter commands are never automatically retried.
 
-**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The latest layout, touch-target, and capacity additions still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The latest layout, touch-target, and capacity additions still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. GPS forwarding is experimental (see below). No wake-from-sleep, video preview, or resolution settings yet.
 
 ## GPS forwarding (0.7.0, experimental)
 
