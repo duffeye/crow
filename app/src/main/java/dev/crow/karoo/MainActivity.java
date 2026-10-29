@@ -14,7 +14,7 @@ import java.util.Locale;
 public final class MainActivity extends Activity implements CameraLink.Listener {
     private CameraLink link;
     private TextView message, status;
-    private Button shutter, mode;
+    private Button shutter, photoMode, videoMode;
     private LinearLayout devices;
     private final HashSet<String> seen = new HashSet<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -34,7 +34,8 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         button(root, "Find camera", () -> { if (permissions()) { seen.clear(); devices.removeAllViews(); link.scan(); } });
         devices = new LinearLayout(this); devices.setOrientation(LinearLayout.VERTICAL); root.addView(devices);
         shutter = button(root, "Shutter", () -> link.shutter());
-        mode = button(root, "Next camera mode", () -> link.nextMode());
+        photoMode = button(root, "Photo mode", () -> link.switchMode(5));
+        videoMode = button(root, "Video mode", () -> link.switchMode(1));
         button(root, "Disconnect", () -> { link.close(); link.report("Disconnected. Recording may continue on the camera."); });
         text(root, "Keep this app open for control. Leaving it disconnects Bluetooth; it does not stop recording.", 14);
         changed();
@@ -73,7 +74,8 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         boolean supported = link.mode == 1 || link.mode == 5;
         shutter.setText(link.mode == 5 ? "Take photo" : link.state == 3 ? "Stop recording" : "Start recording");
         shutter.setEnabled(fresh && supported && !link.busy && (link.state == 1 || link.state == 3 && link.mode == 1));
-        mode.setEnabled(fresh && !link.busy && link.state == 1);
+        photoMode.setEnabled(fresh && !link.busy && link.state == 1 && link.mode != 5);
+        videoMode.setEnabled(fresh && !link.busy && link.state == 1 && link.mode != 1);
     }
     private String modeName(int mode) {
         switch (mode) { case 1: return "Video"; case 5: return "Photo"; case 0: return "Slow motion"; case 2: return "Timelapse"; case 10: return "Hyperlapse"; default: return "Mode " + mode; }

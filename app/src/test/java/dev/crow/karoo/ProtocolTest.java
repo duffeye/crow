@@ -12,9 +12,13 @@ public class ProtocolTest {
     }
     @Test public void matchesDjiPublishedModeSwitchVector() {
         byte[] expected = hex("AA1B000100000000050057EE1D04000033FF0A01473936F4FAE1D0");
-        assertArrayEquals(expected, Protocol.encode(1, 5, 0x1d, 4, hex("000033FF0A01473936")));
+        assertArrayEquals(expected, Protocol.encode(1, 5, 0x1d, 4, Protocol.modeSwitch(10)));
         Protocol.Frame frame = new Protocol.Decoder().accept(expected).get(0);
         assertEquals(5, frame.seq); assertEquals(0x1d, frame.set); assertFalse(frame.response());
+    }
+    @Test public void photoAndVideoUseExplicitModeSwitchPayloads() {
+        assertArrayEquals(hex("000033FF0501473936"), Protocol.modeSwitch(5));
+        assertArrayEquals(hex("000033FF0101473936"), Protocol.modeSwitch(1));
     }
     @Test public void matchesDjiPublishedPairingVector() {
         byte[] expected = hex("AA330002000000000100982F00197856341206383456789ABC00000000000000000000000000000000FE1F00000000796C667C");

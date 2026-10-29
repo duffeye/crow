@@ -38,6 +38,11 @@ public final class Protocol {
         b[26] = 1; put(b, 27, code, 2);
         return b;
     }
+    /** Mode-switch payload from DJI's published 1D04 example (including its reserved bytes). */
+    public static byte[] modeSwitch(int mode) {
+        if (mode < 0 || mode > 255) throw new IllegalArgumentException("Invalid mode");
+        return new byte[]{0, 0, 0x33, (byte) 0xff, (byte) mode, 1, 0x47, 0x39, 0x36};
+    }
     public static final class Frame {
         public final int type, seq, set, id;
         public final byte[] payload;
