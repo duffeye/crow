@@ -4,10 +4,13 @@ import android.app.PendingIntent
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.Gravity
+import android.util.TypedValue
 import android.widget.RemoteViews
 import io.hammerhead.karooext.KarooSystemService
 import io.hammerhead.karooext.extension.DataTypeImpl
@@ -21,7 +24,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Karoo keeps this service bound while the extension is enabled. It owns one shared BLE session. */
-class CrowExtension : KarooExtension("crow", "5"), CameraLink.Listener {
+class CrowExtension : KarooExtension("crow", "6"), CameraLink.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val timers = mutableSetOf<Runnable>()
     private val session by lazy { CameraSession.get(this) }
@@ -48,7 +51,7 @@ class CrowExtension : KarooExtension("crow", "5"), CameraLink.Listener {
                 if (!cancelled.get() && !destroyed) {
                     // Editing a ride profile must never connect to, or control, a real camera.
                     if (!config.preview) ensureSession()
-                    emitter.onNext(UpdateGraphicConfig(showHeader = false))
+                    emitter.onNext(UpdateGraphicConfig(showHeader = true))
                     timers.add(tick)
                     tick.run()
                 }
@@ -97,6 +100,25 @@ class CrowExtension : KarooExtension("crow", "5"), CameraLink.Listener {
         5 -> "Photo"
         10 -> "Hyperlapse"
         else -> "Mode $mode"
+    }
+
+    private fun fieldGravity(config: ViewConfig): Int = Gravity.CENTER_VERTICAL or when (config.alignment) {
+        ViewConfig.Alignment.LEFT -> Gravity.LEFT
+        ViewConfig.Alignment.CENTER -> Gravity.CENTER_HORIZONTAL
+        ViewConfig.Alignment.RIGHT -> Gravity.RIGHT
+    }
+
+    private fun styleValue(context: Context, config: ViewConfig, view: RemoteViews, id: Int, value: String) {
+        // Use the host's numeric-field size, fitting long camera labels within the configured field width.
+        val metrics = context.resources.displayMetrics
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
+            textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, config.textSize.coerceAtLeast(12).toFloat(), metrics)
+        }
+        val available = (config.viewSize.first - 16 * metrics.density).coerceAtLeast(1f)
+        val ratio = (available / paint.measureText(value).coerceAtLeast(1f)).coerceAtMost(1f)
+        view.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, (config.textSize * ratio).coerceAtLeast(12f))
+        view.setInt(id, "setGravity", fieldGravity(config))
     }
 
     private fun renderSeparate(context: Context, config: ViewConfig, fieldId: String): RemoteViews {
@@ -159,7 +181,9 @@ class CrowExtension : KarooExtension("crow", "5"), CameraLink.Listener {
         view.setTextViewText(R.id.field_title, title)
         view.setTextViewText(R.id.field_value, value)
         view.setTextViewText(R.id.field_detail, detail)
-        view.setTextColor(R.id.field_value, if (recording && fieldId != "camera-photo" && fieldId != "camera-mode") Color.rgb(180, 0, 0) else if (enabled) Color.BLACK else Color.DKGRAY)
+        view.setTextColor(R.id.field_value, context.getColor(if (enabled || config.preview) R.color.field_text else R.color.field_disabled))
+        styleValue(context, config, view, R.id.field_value, value)
+        view.setInt(R.id.field_detail, "setGravity", fieldGravity(config))
         view.setBoolean(R.id.field_root, "setEnabled", enabled && !config.preview)
         view.setContentDescription(R.id.field_root, "$title: $value. $detail")
         val heightDp = config.viewSize.second / context.resources.displayMetrics.density
@@ -192,7 +216,9 @@ class CrowExtension : KarooExtension("crow", "5"), CameraLink.Listener {
         }
         view.setTextViewText(R.id.camera_status, title)
         view.setTextViewText(R.id.camera_detail, detail)
-        view.setTextColor(R.id.camera_detail, if (recording) Color.rgb(180, 0, 0) else Color.BLACK)
+        view.setTextColor(R.id.camera_detail, context.getColor(R.color.field_secondary))
+        styleValue(context, config.copy(textSize = minOf(config.textSize, 28)), view, R.id.camera_status, title)
+        view.setInt(R.id.camera_detail, "setGravity", fieldGravity(config))
         view.setTextViewText(R.id.camera_shutter, if (disconnected) "Reconnect" else CameraControls.shutterLabel(mode, state))
         view.setBoolean(R.id.camera_shutter, "setEnabled", !preview && (canShoot || disconnected))
         view.setBoolean(R.id.camera_photo, "setEnabled", !preview && canSwitch && mode != 5)

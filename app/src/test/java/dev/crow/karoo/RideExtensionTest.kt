@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.os.Looper
 import android.os.SystemClock
 import android.view.View
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.RemoteViews
 import android.widget.TextView
@@ -135,9 +134,9 @@ class RideExtensionTest {
         @Suppress("DEPRECATION")
         val remote = updates.mapNotNull { it.getParcelable<RemoteViews>("view") }.single()
         val view = remote.apply(app, FrameLayout(app))
-        assertFalse(view.findViewById<Button>(R.id.camera_shutter).isEnabled)
-        assertFalse(view.findViewById<Button>(R.id.camera_photo).isEnabled)
-        assertFalse(view.findViewById<Button>(R.id.camera_video).isEnabled)
+        assertFalse(view.findViewById<View>(R.id.camera_shutter).isEnabled)
+        assertFalse(view.findViewById<View>(R.id.camera_photo).isEnabled)
+        assertFalse(view.findViewById<View>(R.id.camera_video).isEnabled)
         assertFalse(CameraSession.get(app).inUse())
         emitter.cancel()
         ShadowLooper.idleMainLooper()

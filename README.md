@@ -12,7 +12,15 @@ An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead
 - Display camera-reported capture state, elapsed time, battery, and mode.
 - Disable controls after five seconds without live status; serialize BLE writes and time out failed operations. Shutter commands are never automatically retried.
 
-**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. Version 0.5.0 adds four separate fields and confirmed-mode capture sequences; those additions still need physical-device validation. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The 0.5.0 separate fields and 0.5.1 styling update still need physical-device validation. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+
+## Karoo field styling (0.5.1)
+
+All ride fields use Karoo's own header rendering, including the field label and a transparent monochrome camera icon. Custom values use bold condensed text, respect the profile's Left/Center/Right field alignment, and use the text size supplied by Karoo, reduced where necessary to fit a long label. The combined control panel caps its status font to leave room for touch targets.
+
+Field backgrounds are transparent so Karoo can draw its page background and optional field boundaries. Secondary text is muted; disabled actions use a subdued value. Day/night text colours follow Android's UI mode. The combined field uses flat outlined text actions rather than raised Android buttons. Separate action fields use a subtle pressed state without an extra card border. Camera commands and field IDs are unchanged.
+
+After installing, compare the fields beside a standard Karoo field at a small and large size, test profile alignment settings, and verify legibility with boundaries on/off and in the device's day/night modes. Karoo supplies the actual native headers; the custom text body is not the host's numeric renderer because these fields contain text and tap actions.
 
 ## Separate ride fields (0.5.0)
 

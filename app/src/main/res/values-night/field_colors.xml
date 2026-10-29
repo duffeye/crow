@@ -1,0 +1,7 @@
+<resources>
+    <color name="field_text">#FFFFFF</color>
+    <color name="field_secondary">#C0C0C0</color>
+    <color name="field_disabled">#888888</color>
+    <color name="field_pressed">#333333</color>
+    <color name="field_outline">#606060</color>
+</resources>

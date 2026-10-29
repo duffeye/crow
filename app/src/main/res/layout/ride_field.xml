@@ -1,11 +1,11 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/field_root" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:gravity="center" android:padding="3dp" android:background="#FFFFFF">
+    android:orientation="vertical" android:gravity="center_vertical" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="2dp" android:paddingBottom="2dp" android:background="@drawable/field_touch_background">
     <TextView android:id="@+id/field_title" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="12sp" android:textColor="#333333" android:gravity="center" android:maxLines="1" android:ellipsize="end" />
+        android:visibility="gone" android:textSize="12sp" android:textColor="@color/field_secondary" android:gravity="end" android:maxLines="1" android:ellipsize="end" />
     <TextView android:id="@+id/field_value" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
-        android:textSize="24sp" android:textColor="#111111" android:gravity="center" android:maxLines="2" android:ellipsize="end"
-        android:autoSizeTextType="uniform" android:autoSizeMinTextSize="12sp" android:autoSizeMaxTextSize="28sp" android:autoSizeStepGranularity="1sp" />
+        android:textSize="24sp" android:fontFamily="sans-serif-condensed" android:textStyle="bold" android:includeFontPadding="false"
+        android:textColor="@color/field_text" android:gravity="end|center_vertical" android:maxLines="1" android:ellipsize="end" />
     <TextView android:id="@+id/field_detail" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="12sp" android:textColor="#333333" android:gravity="center" android:maxLines="1" android:ellipsize="end" />
+        android:textSize="12sp" android:fontFamily="sans-serif" android:includeFontPadding="false" android:textColor="@color/field_secondary" android:gravity="end" android:maxLines="1" android:ellipsize="end" />
 </LinearLayout>

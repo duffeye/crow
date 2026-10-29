@@ -1,16 +1,16 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
-    android:gravity="center" android:padding="4dp" android:background="#FFFFFF">
+    android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="2dp" android:paddingBottom="2dp">
     <TextView android:id="@+id/camera_status" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="16sp" android:textColor="#111111" android:gravity="center" android:maxLines="1" android:ellipsize="end" />
+        android:textSize="24sp" android:fontFamily="sans-serif-condensed" android:textStyle="bold" android:includeFontPadding="false" android:textColor="@color/field_text" android:gravity="end|center_vertical" android:maxLines="1" android:ellipsize="end" />
     <TextView android:id="@+id/camera_detail" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="13sp" android:textColor="#111111" android:gravity="center" android:maxLines="1" android:ellipsize="end" />
-    <Button android:id="@+id/camera_shutter" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:minHeight="48dp" android:textSize="16sp" android:textAllCaps="false" />
+        android:textSize="12sp" android:includeFontPadding="false" android:textColor="@color/field_secondary" android:gravity="end" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/camera_shutter" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:minHeight="48dp" android:gravity="center" android:fontFamily="sans-serif-condensed" android:textStyle="bold" android:textColor="@color/field_action_text" android:background="@drawable/field_action_background" android:textSize="16sp" android:textAllCaps="false" />
     <LinearLayout android:id="@+id/camera_modes" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        <Button android:id="@+id/camera_photo" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
-            android:minHeight="48dp" android:text="Photo" android:textSize="14sp" android:textAllCaps="false" />
-        <Button android:id="@+id/camera_video" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
-            android:minHeight="48dp" android:text="Video" android:textSize="14sp" android:textAllCaps="false" />
+        <TextView android:id="@+id/camera_photo" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:gravity="center" android:fontFamily="sans-serif-condensed" android:textStyle="bold" android:textColor="@color/field_action_text" android:background="@drawable/field_action_background" android:text="Photo" android:textSize="14sp" android:textAllCaps="false" />
+        <TextView android:id="@+id/camera_video" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:gravity="center" android:fontFamily="sans-serif-condensed" android:textStyle="bold" android:textColor="@color/field_action_text" android:background="@drawable/field_action_background" android:text="Video" android:textSize="14sp" android:textAllCaps="false" />
     </LinearLayout>
 </LinearLayout>
