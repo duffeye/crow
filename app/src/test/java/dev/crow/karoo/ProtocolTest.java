@@ -22,9 +22,19 @@ public class ProtocolTest {
     }
     @Test public void matchesDjiPublishedPairingVector() {
         byte[] expected = hex("AA330002000000000100982F00197856341206383456789ABC00000000000000000000000000000000FE1F00000000796C667C");
-        byte[] payload = Protocol.pairing(hex("383456789ABC"), 8190);
-        payload[26] = 0; // Published vector uses reconnect verification mode.
+        byte[] payload = Protocol.pairing(hex("383456789ABC"), 8190, true);
         assertArrayEquals(expected, Protocol.encode(2, 1, 0, 0x19, payload));
+    }
+    @Test public void firstPairingRequiresApprovalAndReconnectPreservesIdentity() {
+        byte[] identity = hex("023456789ABC");
+        byte[] first = Protocol.pairing(identity, 1234, false);
+        byte[] reconnect = Protocol.pairing(identity, 1234, true);
+        assertEquals(1, first[26]);
+        assertEquals(0, reconnect[26]);
+        assertArrayEquals(identity, Arrays.copyOfRange(reconnect, 5, 11));
+        assertEquals(1234, Protocol.u16(reconnect, 27));
+        reconnect[26] = 1;
+        assertArrayEquals(first, reconnect);
     }
     @Test public void acceptsEveryPossibleNotificationSplit() {
         byte[] frame = Protocol.encode(2, 77, 0, 0x11, new byte[]{1, 1, 0, 0});

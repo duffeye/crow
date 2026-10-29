@@ -33,10 +33,12 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         message = text(root, "", 16);
         button(root, "Find camera", () -> { if (permissions()) { seen.clear(); devices.removeAllViews(); link.scan(); } });
         devices = new LinearLayout(this); devices.setOrientation(LinearLayout.VERTICAL); root.addView(devices);
+        button(root, "Reconnect", () -> { if (permissions()) { devices.removeAllViews(); link.reconnectSaved(); } });
         shutter = button(root, "Shutter", () -> link.shutter());
         photoMode = button(root, "Photo mode", () -> link.switchMode(5));
         videoMode = button(root, "Video mode", () -> link.switchMode(1));
         button(root, "Disconnect", () -> { link.close(); link.report("Disconnected. Recording may continue on the camera."); });
+        button(root, "Forget camera", () -> { devices.removeAllViews(); link.forgetCamera(); });
         text(root, "Keep this app open for control. Leaving it disconnects Bluetooth; it does not stop recording.", 14);
         changed();
     }
@@ -49,8 +51,11 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         b.setMinHeight(dp(64)); b.setGravity(Gravity.CENTER);
         parent.addView(b, new LinearLayout.LayoutParams(-1, -2)); b.setOnClickListener(v -> action.run()); return b;
     }
+    private String[] neededPermissions() {
+        return Build.VERSION.SDK_INT >= 31 ? new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT} : new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
+    }
     private boolean permissions() {
-        String[] needed = Build.VERSION.SDK_INT >= 31 ? new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT} : new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
+        String[] needed = neededPermissions();
         for (String p : needed) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) { requestPermissions(needed, 1); return false; }
         return true;
     }
@@ -80,7 +85,11 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
     private String modeName(int mode) {
         switch (mode) { case 1: return "Video"; case 5: return "Photo"; case 0: return "Slow motion"; case 2: return "Timelapse"; case 10: return "Hyperlapse"; default: return "Mode " + mode; }
     }
-    @Override protected void onResume() { super.onResume(); handler.post(refresh); }
+    @Override protected void onResume() {
+        super.onResume(); handler.post(refresh);
+        for (String permission : neededPermissions()) if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) return;
+        link.reconnectSaved();
+    }
     @Override protected void onPause() {
         handler.removeCallbacks(refresh); link.close(); link.report("Disconnected. Recording may continue on the camera."); super.onPause();
     }

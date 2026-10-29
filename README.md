@@ -6,12 +6,13 @@ An initial standalone Android Bluetooth remote for the **Hammerhead Karoo 3** an
 
 - Discover cameras advertising DJI's supported remote protocol and select a specific camera.
 - Confirm a pairing code on the camera; retain a per-install remote identity.
+- Remember the last approved camera after live status arrives and reconnect when the app opens. Use **Reconnect** to retry or **Forget camera** to clear the saved camera.
 - Trigger the shutter: start/stop video in Video mode, or take a photo in Photo mode.
 - Select Photo or Video directly, without opening the camera's Quick Switch screen.
 - Display camera-reported capture state, elapsed time, battery, and mode.
 - Disable controls after five seconds without live status; serialize BLE writes and time out failed operations. Shutter commands are never automatically retried.
 
-**Status:** prototype; the user has confirmed pairing and starting/stopping video on a Galaxy S23 with the Action 4. Direct mode selection and still photos remain unverified on hardware; APK compilation and JVM checks are separate from physical-device validation. No Karoo/Action 4 hardware has been connected in this cloud workspace. Pairing, camera firmware compatibility, BLE packet fragmentation, and coexistence with cycling sensors require the checklist below. This is a launcher app, not yet a Karoo ride-screen extension. It disconnects when backgrounded and does not stop a camera recording when disconnected. No wake-from-sleep, GPS injection, video preview, resolution settings, or automatic reconnect yet.
+**Status:** prototype; the user has confirmed pairing, video start/stop, direct mode selection, and still capture on a Galaxy S23 with the Action 4. Automatic reconnection remains unverified on hardware; APK compilation and JVM checks are separate from physical-device validation. No Karoo/Action 4 hardware has been connected in this cloud workspace. Pairing, camera firmware compatibility, BLE packet fragmentation, and coexistence with cycling sensors require the checklist below. This is a launcher app, not yet a Karoo ride-screen extension. It disconnects when backgrounded and does not stop a camera recording when disconnected. No wake-from-sleep, GPS injection, video preview, resolution settings, or background reconnection yet.
 
 ## Build
 
@@ -38,6 +39,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 The debug build is for development; release signing and distribution are not configured.
 
+## Automatic reconnection (0.3.0)
+
+After installing this version, pair once with **Find camera** and wait for live camera status. Earlier versions did not save the camera address, so an existing 0.2.0 installation needs this one-time step too. The next time you open or return to the app, it attempts one connection to that camera. **Reconnect** retries after a timeout; **Find camera** lets you choose a different camera. **Disconnect** ends the current session. **Forget camera** disables automatic reconnection until a camera is paired again.
+
+The camera must be awake, in range, and available over Bluetooth. The same remote identity is reused with DJI's reconnect verification mode; the camera remains responsible for approval and may ask for a code if its pairing history was cleared. A failed or rejected pairing never replaces the remembered camera. Reconnection does not start a recording, change camera mode, or run in the background.
+
+To test, pair, leave the app, and reopen it with the camera awake. Check live status returns without another code prompt. Repeat with the camera off: the attempt must time out and allow **Reconnect** after waking it. Test **Forget camera**, a declined pairing, and switching cameras too.
+
 ## First physical-device test
 
 1. Activate/update the Action 4 using DJI's normal setup if needed. Turn it on and disconnect other camera remotes/Mimo; the camera BLE connection can be occupied by another controller.
@@ -46,7 +55,7 @@ The debug build is for development; release signing and distribution are not con
 4. Check battery and mode against the camera. If no camera appears, check its wireless settings and firmware; discovery uses DJI manufacturer data, not a device-name guess.
 5. Select **Video mode**, then start a short recording. Verify recording on the camera itself, elapsed-time updates, stopping, and that a playable file was saved.
 6. Tap **Photo mode**, wait for the camera-reported mode to change and the shutter to read **Take photo**, then tap it and verify the saved photo. Mode selection is disabled during recording. Other camera modes deliberately disable the shutter in this version.
-7. Walk out of range or turn off the camera. Confirm controls disable and reconnect manually. Background the app during a recording and verify the camera continues recording; reopen and pair again to control it.
+7. Walk out of range or turn off the camera. Confirm controls disable; wake the camera and tap **Reconnect**. Background the app during a recording and verify the camera continues recording; reopen and check it reconnects automatically before controlling it.
 8. Repeat with Karoo cycling sensors connected. Record Karoo OS and Action 4 firmware versions and any pairing or command error messages.
 
 ## Protocol and architecture

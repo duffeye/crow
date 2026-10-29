@@ -19,6 +19,7 @@ final class CameraLink {
     private final Listener listener;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final BluetoothAdapter adapter;
+    private final SharedPreferences preferences;
     private final ArrayDeque<byte[]> writes = new ArrayDeque<>();
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic tx;
@@ -26,6 +27,7 @@ final class CameraLink {
     private int sequence, pendingSeq = -1;
     private int pendingSet, pendingId, targetMode = -1;
     private boolean writing, scanning;
+    private boolean reconnecting;
     private Runnable writeTimeout, commandTimeout, connectTimeout;
     String message = "Turn on the Action 4, then find your camera.";
     boolean ready, busy;
@@ -34,12 +36,25 @@ final class CameraLink {
 
     CameraLink(Context context, Listener listener) {
         this.context = context; this.listener = listener;
+        preferences = context.getSharedPreferences("camera", Context.MODE_PRIVATE);
         BluetoothManager manager = context.getSystemService(BluetoothManager.class);
         adapter = manager == null ? null : manager.getAdapter();
     }
     boolean fresh() { return ready && android.os.SystemClock.elapsedRealtime() - statusAt < 5000; }
     void report(String text) { message = text; listener.changed(); }
     private void fail(String text) { close(); report(text); }
+    void reconnectSaved() {
+        if (gatt != null || scanning) return;
+        String address = preferences.getString("paired_address", null);
+        if (address == null) { report("Find your camera to pair. It will reconnect automatically next time."); return; }
+        if (adapter == null || !adapter.isEnabled()) { report("Enable Bluetooth, then tap Reconnect."); return; }
+        try { connect(adapter.getRemoteDevice(address)); }
+        catch (IllegalArgumentException e) { report("Saved camera address is invalid. Tap Forget camera, then Find camera."); }
+    }
+    void forgetCamera() {
+        close(); preferences.edit().remove("paired_address").apply();
+        report("Camera forgotten. Tap Find camera to pair again.");
+    }
     void scan() {
         close();
         if (adapter == null || !adapter.isEnabled()) { report("Enable Bluetooth in Karoo settings first."); return; }
@@ -74,10 +89,11 @@ final class CameraLink {
     };
     void connect(BluetoothDevice device) {
         close(); decoder = new Protocol.Decoder();
-        report("Connecting… Keep the camera screen visible.");
+        reconnecting = device.getAddress().equals(preferences.getString("paired_address", null));
+        report(reconnecting ? "Reconnecting to your camera…" : "Connecting… Keep the camera screen visible.");
         try {
             gatt = device.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE);
-            connectTimeout = () -> fail("Pairing timed out. Confirm on the camera and try again.");
+            connectTimeout = () -> fail("Connection timed out. Wake the camera and tap Reconnect, or use Find camera.");
             handler.postDelayed(connectTimeout, 45000);
         } catch (RuntimeException e) { fail("Connection failed: " + e.getMessage()); }
     }
@@ -118,7 +134,7 @@ final class CameraLink {
             handler.post(() -> {
                 if (g != gatt) return;
                 if (status != 0) { fail("Notification setup failed (" + status + ")."); return; }
-                SharedPreferences prefs = context.getSharedPreferences("camera", Context.MODE_PRIVATE);
+                SharedPreferences prefs = preferences;
                 String saved = prefs.getString("identity", null);
                 byte[] identity = new byte[6];
                 if (saved == null) {
@@ -128,8 +144,8 @@ final class CameraLink {
                     prefs.edit().putString("identity", hex.toString()).apply();
                 } else for (int i = 0; i < 6; i++) identity[i] = (byte) Integer.parseInt(saved.substring(i * 2, i * 2 + 2), 16);
                 int code = new SecureRandom().nextInt(10000);
-                report(String.format(Locale.ROOT, "Confirm code %04d on the camera.", code));
-                send(2, ++sequence, 0, 0x19, Protocol.pairing(identity, code));
+                report(String.format(Locale.ROOT, reconnecting ? "Reconnecting… If the camera asks, confirm code %04d." : "Confirm code %04d on the camera.", code));
+                send(2, ++sequence, 0, 0x19, Protocol.pairing(identity, code, reconnecting));
             });
         }
         @Override public void onCharacteristicWrite(BluetoothGatt g, BluetoothGattCharacteristic c, int status) {
@@ -185,6 +201,10 @@ final class CameraLink {
         }
         if (!ready) return;
         if (f.set == 0x1d && f.id == 2 && !f.response() && p.length >= 38) {
+            // Remember only after approval and a valid live status, never on selection or a failed handshake.
+            String address = gatt.getDevice().getAddress();
+            if (!address.equals(preferences.getString("paired_address", null)))
+                preferences.edit().putString("paired_address", address).apply();
             mode = p[0] & 255; state = p[1] & 255; seconds = Protocol.u16(p, 5);
             battery = (p[37] & 255) <= 100 ? p[37] & 255 : -1;
             statusAt = android.os.SystemClock.elapsedRealtime();

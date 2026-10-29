@@ -30,12 +30,12 @@ public final class Protocol {
         put(b, n - 4, crc(b, n - 4, 0xedb88320L, 0xffffffffL), 4);
         return b;
     }
-    public static byte[] pairing(byte[] identity, int code) {
+    public static byte[] pairing(byte[] identity, int code, boolean previouslyPaired) {
         if (identity.length != 6) throw new IllegalArgumentException("Identity needs six bytes");
         byte[] b = new byte[33];
         put(b, 0, 0x12345678, 4); b[4] = 6;
         System.arraycopy(identity, 0, b, 5, 6);
-        b[26] = 1; put(b, 27, code, 2);
+        b[26] = (byte) (previouslyPaired ? 0 : 1); put(b, 27, code, 2);
         return b;
     }
     /** Mode-switch payload from DJI's published 1D04 example (including its reserved bytes). */
