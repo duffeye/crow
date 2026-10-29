@@ -31,12 +31,14 @@ public class CameraCapacityTest {
         CameraCapacity.fromStatus(new byte[37]);
     }
     @Test public void formatsRemainingTimeAndCountsWithUnitsUnambiguous() {
-        assertEquals("0:00", CameraCapacity.videoTime(0));
-        assertEquals("0:59", CameraCapacity.videoTime(59));
-        assertEquals("1:00", CameraCapacity.videoTime(60));
-        assertEquals("59:59", CameraCapacity.videoTime(3599));
-        assertEquals("1:00:00", CameraCapacity.videoTime(3600));
-        assertEquals("1:24:30", CameraCapacity.videoTime(5070));
+        assertEquals("0h 00m", CameraCapacity.videoTime(0));
+        assertEquals("0h 00m", CameraCapacity.videoTime(59));
+        assertEquals("0h 01m", CameraCapacity.videoTime(60));
+        assertEquals("0h 59m", CameraCapacity.videoTime(3599));
+        assertEquals("1h 00m", CameraCapacity.videoTime(3600));
+        assertEquals("1h 24m", CameraCapacity.videoTime(5070));
+        assertEquals("23h 59m", CameraCapacity.videoTime(86399));
+        assertEquals("24h 00m", CameraCapacity.videoTime(86400));
         assertEquals("0", CameraCapacity.photoCount(0));
         assertEquals("1,234", CameraCapacity.photoCount(1234));
         assertEquals("—", CameraCapacity.videoTime(-1));

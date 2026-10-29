@@ -21,7 +21,7 @@ Add these read-only fields from **Crow Camera** in your ride profile:
 | Tile | Value |
 | --- | --- |
 | **Battery** | Camera battery percentage, e.g. `85%` (not the Karoo battery). |
-| **Video left** | Camera-estimated recording time remaining at its current settings. Uses `m:ss` below one hour and `h:mm:ss` otherwise, e.g. `1:24:30`. |
+| **Video left** | Camera-estimated recording time remaining at its current settings. Uses explicit hours and minutes, e.g. `1h 24m` or `0h 45m`. Whole minutes are rounded down; less than one minute displays `0h 00m`. |
 | **Photos left** | Camera-estimated number of photos remaining, e.g. `1,234`. |
 
 All three use the existing shared connection, native read-only headers, and compact text fitting. Zero is displayed as zero (no capacity left); unreported/invalid values display `—`. Stale or disconnected tiles display Offline rather than an old estimate. These are camera estimates, which can change with resolution, frame rate, photo format, or mode. They are not estimates of battery runtime or total SD-card size.

@@ -21,8 +21,8 @@ final class CameraCapacity {
     }
     static String videoTime(long seconds) {
         if (seconds < 0) return "—";
-        if (seconds < 3600) return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60);
-        return String.format(Locale.ROOT, "%d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60);
+        // Whole minutes, rounded down so the displayed estimate never overstates camera capacity.
+        return String.format(Locale.ROOT, "%dh %02dm", seconds / 3600, (seconds / 60) % 60);
     }
     static String photoCount(long photos) { return photos < 0 ? "—" : String.format(Locale.ROOT, "%,d", photos); }
 }

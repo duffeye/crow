@@ -17,7 +17,7 @@
     <string name="battery_field_name">Battery</string>
     <string name="battery_field_description">Camera battery remaining, as a percentage. Read-only.</string>
     <string name="video_left_field_name">Video left</string>
-    <string name="video_left_field_description">Camera-estimated recording time remaining at the current settings. Read-only.</string>
+    <string name="video_left_field_description">Camera-estimated recording time remaining in hours and minutes at the current settings. Read-only.</string>
     <string name="photos_left_field_name">Photos left</string>
     <string name="photos_left_field_description">Camera-estimated number of photos remaining at the current settings. Read-only.</string>
 </resources>

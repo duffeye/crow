@@ -65,7 +65,7 @@ class RideExtensionTest {
         assertEquals(extension.types.map { it.typeId }.toSet(), declared)
         assertEquals(8, declared.size)
         val values = mapOf("camera-record" to "Start", "camera-photo" to "Shoot", "camera-status" to "Ready", "camera-mode" to "Video",
-            "camera-battery" to "85%", "camera-video-left" to "1:24:30", "camera-photos-left" to "1,234")
+            "camera-battery" to "85%", "camera-video-left" to "1h 24m", "camera-photos-left" to "1,234")
         for ((id, value) in values) {
             val view = field(extension, id, true)
             assertEquals(value, view.findViewById<TextView>(R.id.field_value).text.toString())
@@ -127,16 +127,16 @@ class RideExtensionTest {
         link.videoSecondsRemaining = 5070; link.photosRemaining = 1234
         link.statusAt = SystemClock.elapsedRealtime()
         try {
-            for ((id, expected) in mapOf("camera-battery" to "7%", "camera-video-left" to "1:24:30", "camera-photos-left" to "1,234")) {
+            for ((id, expected) in mapOf("camera-battery" to "7%", "camera-video-left" to "1h 24m", "camera-photos-left" to "1,234")) {
                 val view = field(extension, id, false)
                 assertEquals(expected, view.findViewById<TextView>(R.id.field_value).text.toString())
                 assertFalse(view.hasOnClickListeners())
                 assertEquals(View.GONE, view.findViewById<View>(R.id.field_header).visibility)
             }
             link.busy = true
-            assertEquals("1:24:30", field(extension, "camera-video-left", false).findViewById<TextView>(R.id.field_value).text.toString())
+            assertEquals("1h 24m", field(extension, "camera-video-left", false).findViewById<TextView>(R.id.field_value).text.toString())
             link.videoSecondsRemaining = 0; link.photosRemaining = 0
-            assertEquals("0:00", field(extension, "camera-video-left", false).findViewById<TextView>(R.id.field_value).text.toString())
+            assertEquals("0h 00m", field(extension, "camera-video-left", false).findViewById<TextView>(R.id.field_value).text.toString())
             assertEquals("0", field(extension, "camera-photos-left", false).findViewById<TextView>(R.id.field_value).text.toString())
             link.photosRemaining = -1
             assertEquals("—", field(extension, "camera-photos-left", false).findViewById<TextView>(R.id.field_value).text.toString())
