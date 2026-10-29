@@ -14,6 +14,14 @@ An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead
 
 **Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The separate-field styling and compact-layout fixes still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
 
+## Full-field touch targets (0.5.3)
+
+The separate **Record**, **Photo**, and **Mode** fields now act as one button across the whole tile interior, including their heading, value, helper text, padding, and unused space. These three fields draw their compact header inside the clickable RemoteViews container because Karoo's native header sits outside an extension's click target. The Status field remains read-only with a native Karoo header. The combined Camera panel retains its individual controls.
+
+Text still fits the available area below the heading. Preview tiles have no click actions; disconnected, stale, busy, or otherwise unavailable commands stay disabled. The live command receiver also checks current camera state before acting, regardless of what the last rendered tile showed.
+
+To test, tap each action tile near all four corners, on its heading, and in empty space. Each tap should produce a single action, and the whole tile should show pressed feedback. Check no action fires during profile editing and Photo/Mode remain disabled while recording. Existing ride-profile field placements are preserved.
+
 ## Compact fields (0.5.2)
 
 The field chooser now uses short native headings: **Record**, **Photo**, **Status**, and **Mode**. Existing field IDs and ride-profile placements are preserved. The record value is Start/Stop, the photo action is Shoot, and status reads Ready, red REC, Offline, or No signal. Taller status fields also show battery and recording time/mode.

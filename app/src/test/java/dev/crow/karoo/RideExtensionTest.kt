@@ -1,10 +1,12 @@
 package dev.crow.karoo
 
 import android.bluetooth.BluetoothDevice
+import android.app.Activity
 import android.os.Bundle
 import android.os.Looper
 import android.os.SystemClock
 import android.view.View
+import android.view.MotionEvent
 import android.widget.FrameLayout
 import android.widget.RemoteViews
 import android.widget.TextView
@@ -23,6 +25,7 @@ import org.robolectric.annotation.LooperMode
 import org.robolectric.shadows.ShadowLooper
 import java.util.concurrent.TimeUnit
 import org.xmlpull.v1.XmlPullParser
+import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -39,6 +42,8 @@ class RideExtensionTest {
         val emitter = ViewEmitter(app.packageName, handler)
         extension.types.single { it.typeId == id }.startView(app, config, emitter)
         ShadowLooper.idleMainLooper()
+        val header = updates.mapNotNull { it.getString("value") }.map { JSONObject(it) }.single { it.has("showHeader") }
+        assertEquals(id == "camera" || id == "camera-status", header.getBoolean("showHeader"))
         @Suppress("DEPRECATION")
         val remote = updates.mapNotNull { it.getParcelable<RemoteViews>("view") }.single()
         val view = remote.apply(app, FrameLayout(app))
@@ -100,15 +105,50 @@ class RideExtensionTest {
         for (height in listOf(80, 96, 120, 160)) {
             for (id in listOf("camera-record", "camera-photo", "camera-status", "camera-mode")) {
                 val view = field(extension, id, true, ViewConfig(30 to 10, 160 to height, 72, preview = true))
-                view.measure(View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                val viewport = if (id == "camera-status") height - 32 else height
+                view.measure(View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(viewport, View.MeasureSpec.EXACTLY))
                 view.layout(0, 0, view.measuredWidth, view.measuredHeight)
-                assertTrue("$id at ${height}px: body ${view.measuredHeight}px exceeds space below header", view.measuredHeight <= height - 32)
+                val body = view.findViewById<View>(R.id.field_body)
                 val value = view.findViewById<TextView>(R.id.field_value)
-                assertTrue(value.bottom <= view.measuredHeight - view.paddingBottom)
+                assertTrue("$id at ${height}px: content exceeds available body", (value.parent as View).height <= body.height)
                 assertEquals(0, value.layout.getEllipsisCount(0))
                 if (height <= 96) assertEquals(View.GONE, view.findViewById<View>(R.id.field_detail).visibility)
             }
         }
+    }
+
+    @Test
+    @Config(qualifiers = "mdpi")
+    fun actionTileReceivesOneClickAtHeaderWhitespaceAndEveryCorner() {
+        val app = RuntimeEnvironment.getApplication()
+        val extension = Robolectric.buildService(CrowExtension::class.java).get()
+        val session = CameraSession.get(app)
+        val activityController = Robolectric.buildActivity(Activity::class.java).setup().visible()
+        try {
+            for ((id, action) in mapOf("camera-record" to "record", "camera-photo" to "take-photo", "camera-mode" to "toggle-mode")) {
+                session.link.close()
+                session.link.ready = true; session.link.mode = 1; session.link.state = 1
+                session.link.statusAt = SystemClock.elapsedRealtime()
+                val view = field(extension, id, false, ViewConfig(30 to 15, 160 to 120, 72))
+                activityController.get().setContentView(view, android.view.ViewGroup.LayoutParams(160, 120))
+                view.measure(View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY))
+                view.layout(0, 0, 160, 120)
+                assertTrue(view.isEnabled)
+                assertEquals(View.VISIBLE, view.findViewById<View>(R.id.field_header).visibility)
+                val before = shadowOf(app).broadcastIntents.count { it.action == action }
+                val points = listOf(1f to 1f, 159f to 1f, 1f to 119f, 159f to 119f, 80f to 14f, 80f to 110f)
+                for ((x, y) in points) {
+                    val now = SystemClock.uptimeMillis()
+                    val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0)
+                    val up = MotionEvent.obtain(now, now + 30, MotionEvent.ACTION_UP, x, y, 0)
+                    assertTrue(view.dispatchTouchEvent(down))
+                    assertTrue(view.dispatchTouchEvent(up))
+                    down.recycle(); up.recycle()
+                    ShadowLooper.idleMainLooper()
+                }
+                assertEquals(points.size, shadowOf(app).broadcastIntents.count { it.action == action } - before)
+            }
+        } finally { activityController.pause().stop().destroy(); session.release(extension) }
     }
 
     private fun owner() = object : CameraLink.Listener {

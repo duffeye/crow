@@ -24,7 +24,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Karoo keeps this service bound while the extension is enabled. It owns one shared BLE session. */
-class CrowExtension : KarooExtension("crow", "7"), CameraLink.Listener {
+class CrowExtension : KarooExtension("crow", "8"), CameraLink.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val timers = mutableSetOf<Runnable>()
     private val session by lazy { CameraSession.get(this) }
@@ -51,7 +51,8 @@ class CrowExtension : KarooExtension("crow", "7"), CameraLink.Listener {
                 if (!cancelled.get() && !destroyed) {
                     // Editing a ride profile must never connect to, or control, a real camera.
                     if (!config.preview) ensureSession()
-                    emitter.onNext(UpdateGraphicConfig(showHeader = true))
+                    // Action tiles draw their header inside the same click target; host headers cannot receive our clicks.
+                    emitter.onNext(UpdateGraphicConfig(showHeader = fieldId == "camera" || fieldId == "camera-status"))
                     timers.add(tick)
                     tick.run()
                 }
@@ -131,7 +132,6 @@ class CrowExtension : KarooExtension("crow", "7"), CameraLink.Listener {
             val lineHeight = kotlin.math.ceil(paint.fontMetrics.descent) - kotlin.math.floor(paint.fontMetrics.ascent)
             ratio = minOf(ratio, availableHeight / lineHeight.coerceAtLeast(1f))
             view.setViewVisibility(id, if (availableHeight >= 12 * metrics.density) View.VISIBLE else View.GONE)
-            view.setInt(R.id.field_root, "setMinimumHeight", minOf(44 * metrics.density, bodyHeight(context, config)).toInt())
         }
         view.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, (config.textSize.coerceAtLeast(12) * ratio).coerceAtLeast(1f))
         view.setInt(id, "setGravity", fieldGravity(config))
@@ -194,7 +194,15 @@ class CrowExtension : KarooExtension("crow", "7"), CameraLink.Listener {
             detail = "Open Crow to reconnect"
             enabled = fieldId == "camera-status"
         } else if (busy && fieldId != "camera-status") detail = "Waiting for camera…"
-        view.setTextViewText(R.id.field_title, title)
+        val actionField = fieldId != "camera-status"
+        val heading = when (fieldId) {
+            "camera-record" -> R.string.record_field_name
+            "camera-photo" -> R.string.photo_field_name
+            "camera-mode" -> R.string.mode_field_name
+            else -> R.string.status_field_name
+        }
+        view.setTextViewText(R.id.field_title, context.getString(heading))
+        view.setViewVisibility(R.id.field_header, if (actionField) View.VISIBLE else View.GONE)
         view.setTextViewText(R.id.field_value, value)
         view.setTextViewText(R.id.field_detail, detail)
         view.setTextColor(R.id.field_value, context.getColor(if (recording && fieldId == "camera-status") R.color.field_recording else if (enabled || config.preview) R.color.field_text else R.color.field_disabled))
