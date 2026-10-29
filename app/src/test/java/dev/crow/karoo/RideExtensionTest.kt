@@ -28,7 +28,7 @@ import org.xmlpull.v1.XmlPullParser
 @Config(sdk = [35])
 @LooperMode(LooperMode.Mode.PAUSED)
 class RideExtensionTest {
-    private fun field(extension: CrowExtension, id: String, preview: Boolean): View {
+    private fun field(extension: CrowExtension, id: String, preview: Boolean, config: ViewConfig = ViewConfig(30 to 15, 240 to 160, 20, preview = preview)): View {
         val app = RuntimeEnvironment.getApplication()
         val updates = mutableListOf<Bundle>()
         val handler = object : IHandler.Stub() {
@@ -37,7 +37,7 @@ class RideExtensionTest {
             override fun onComplete() = Unit
         }
         val emitter = ViewEmitter(app.packageName, handler)
-        extension.types.single { it.typeId == id }.startView(app, ViewConfig(30 to 15, 240 to 160, 20, preview = preview), emitter)
+        extension.types.single { it.typeId == id }.startView(app, config, emitter)
         ShadowLooper.idleMainLooper()
         @Suppress("DEPRECATION")
         val remote = updates.mapNotNull { it.getParcelable<RemoteViews>("view") }.single()
@@ -59,7 +59,7 @@ class RideExtensionTest {
         }
         assertEquals(extension.types.map { it.typeId }.toSet(), declared)
         assertEquals(5, declared.size)
-        val values = mapOf("camera-record" to "Start", "camera-photo" to "Take photo", "camera-status" to "Ready", "camera-mode" to "Video")
+        val values = mapOf("camera-record" to "Start", "camera-photo" to "Shoot", "camera-status" to "Ready", "camera-mode" to "Video")
         for ((id, value) in values) {
             val view = field(extension, id, true)
             assertEquals(value, view.findViewById<TextView>(R.id.field_value).text.toString())
@@ -83,13 +83,32 @@ class RideExtensionTest {
             assertFalse(field(extension, "camera-photo", false).findViewById<View>(R.id.field_root).isEnabled)
             assertFalse(field(extension, "camera-mode", false).findViewById<View>(R.id.field_root).isEnabled)
             val status = field(extension, "camera-status", false)
-            assertEquals("Recording", status.findViewById<TextView>(R.id.field_value).text.toString())
+            assertEquals("REC", status.findViewById<TextView>(R.id.field_value).text.toString())
             assertEquals("85% • 07:42", status.findViewById<TextView>(R.id.field_detail).text.toString())
             assertFalse(status.findViewById<View>(R.id.field_root).hasOnClickListeners())
             link.statusAt = SystemClock.elapsedRealtime() - 6000
             assertFalse(field(extension, "camera-record", false).findViewById<View>(R.id.field_root).isEnabled)
             assertEquals("No signal", field(extension, "camera-status", false).findViewById<TextView>(R.id.field_value).text.toString())
         } finally { session.release(extension) }
+    }
+
+    @Test
+    @Config(qualifiers = "mdpi")
+    fun compactFieldsFitBelowNativeHeaderEvenWithLargeHostTextSize() {
+        val app = RuntimeEnvironment.getApplication()
+        val extension = Robolectric.buildService(CrowExtension::class.java).get()
+        for (height in listOf(80, 96, 120, 160)) {
+            for (id in listOf("camera-record", "camera-photo", "camera-status", "camera-mode")) {
+                val view = field(extension, id, true, ViewConfig(30 to 10, 160 to height, 72, preview = true))
+                view.measure(View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+                assertTrue("$id at ${height}px: body ${view.measuredHeight}px exceeds space below header", view.measuredHeight <= height - 32)
+                val value = view.findViewById<TextView>(R.id.field_value)
+                assertTrue(value.bottom <= view.measuredHeight - view.paddingBottom)
+                assertEquals(0, value.layout.getEllipsisCount(0))
+                if (height <= 96) assertEquals(View.GONE, view.findViewById<View>(R.id.field_detail).visibility)
+            }
+        }
     }
 
     private fun owner() = object : CameraLink.Listener {

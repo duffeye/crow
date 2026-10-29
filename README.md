@@ -12,7 +12,15 @@ An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead
 - Display camera-reported capture state, elapsed time, battery, and mode.
 - Disable controls after five seconds without live status; serialize BLE writes and time out failed operations. Shutter commands are never automatically retried.
 
-**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The 0.5.0 separate fields and 0.5.1 styling update still need physical-device validation. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The separate-field styling and compact-layout fixes still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+
+## Compact fields (0.5.2)
+
+The field chooser now uses short native headings: **Record**, **Photo**, **Status**, and **Mode**. Existing field IDs and ride-profile placements are preserved. The record value is Start/Stop, the photo action is Shoot, and status reads Ready, red REC, Offline, or No signal. Taller status fields also show battery and recording time/mode.
+
+This update addresses bottom-clipped values in compact, two-column rows. Text fitting now budgets space for a single-line Karoo header, checks both width and font height, and hides the secondary line when there is insufficient room. Content uses its natural height instead of a weighted value filling the complete field. A measured-layout regression test covers 80–160 px rows with an oversized host text setting. Actual Karoo rendering still needs confirmation.
+
+For a crowded metrics page, place **Record** and **Status** side by side. Put **Photo** and **Mode** on a second row or camera-focused page if needed. Use a taller Status field if battery/time should always remain visible. Test while stationary before relying on the controls during a ride.
 
 ## Karoo field styling (0.5.1)
 
@@ -28,10 +36,10 @@ After installing 0.5.0, edit a ride profile's data page and choose any of these 
 
 | Field | Behavior |
 | --- | --- |
-| **Start/stop recording** | Tap Start to select Video if needed and start recording after camera confirmation; tap Stop to stop an active video. |
-| **Take photo** | Tap to select Photo if needed, wait for confirmation, and trigger the photo shutter once. Disabled during recording/capture. The camera stays in Photo mode afterward. |
-| **Camera status** | Read-only connection/capture state, battery percentage, and recording time. Shows Disconnected or No signal when unavailable. |
-| **Camera mode** | Shows the current mode; tap to switch Photo/Video while idle. Disabled during capture. |
+| **Record** | Tap Start to select Video if needed and start recording after camera confirmation; tap Stop to stop an active video. |
+| **Photo** | Tap to select Photo if needed, wait for confirmation, and trigger the photo shutter once. Disabled during recording/capture. The camera stays in Photo mode afterward. |
+| **Status** | Read-only connection/capture state, battery percentage, and recording time. Shows Offline or No signal when unavailable. |
+| **Mode** | Shows the current mode; tap to switch Photo/Video while idle. Disabled during capture. |
 
 All fields use the same camera connection and update at 1 Hz. They can be placed independently and use text that scales to the available space. Very short fields hide the secondary detail line. Controls are disabled without fresh status or while a command is pending. A failed/timed-out/disconnected mode change cancels the requested capture; a later status update never replays it. A camera capture/playback/sleep transition during a pending mode change also cancels the capture. Profile previews have no click actions.
 

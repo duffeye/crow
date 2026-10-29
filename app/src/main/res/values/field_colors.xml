@@ -1,5 +1,6 @@
 <resources>
     <color name="field_text">#000000</color>
+    <color name="field_recording">#B00020</color>
     <color name="field_secondary">#505050</color>
     <color name="field_disabled">#888888</color>
     <color name="field_pressed">#E5E5E5</color>

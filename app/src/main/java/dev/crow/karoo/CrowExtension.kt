@@ -24,7 +24,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Karoo keeps this service bound while the extension is enabled. It owns one shared BLE session. */
-class CrowExtension : KarooExtension("crow", "6"), CameraLink.Listener {
+class CrowExtension : KarooExtension("crow", "7"), CameraLink.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val timers = mutableSetOf<Runnable>()
     private val session by lazy { CameraSession.get(this) }
@@ -108,16 +108,32 @@ class CrowExtension : KarooExtension("crow", "6"), CameraLink.Listener {
         ViewConfig.Alignment.RIGHT -> Gravity.RIGHT
     }
 
-    private fun styleValue(context: Context, config: ViewConfig, view: RemoteViews, id: Int, value: String) {
-        // Use the host's numeric-field size, fitting long camera labels within the configured field width.
+    private fun bodyHeight(context: Context, config: ViewConfig): Float {
+        val metrics = context.resources.displayMetrics
+        // ViewConfig describes the complete field. Leave room for the native single-line header and borders.
+        val header = 28 * metrics.density * context.resources.configuration.fontScale.coerceAtLeast(1f)
+        return (config.viewSize.second - header - 4 * metrics.density).coerceAtLeast(0f)
+    }
+
+    private fun showFieldDetail(context: Context, config: ViewConfig) = bodyHeight(context, config) >= 76 * context.resources.displayMetrics.density
+
+    private fun styleValue(context: Context, config: ViewConfig, view: RemoteViews, id: Int, value: String, fitHeight: Boolean = false) {
         val metrics = context.resources.displayMetrics
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
             textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, config.textSize.coerceAtLeast(12).toFloat(), metrics)
         }
         val available = (config.viewSize.first - 16 * metrics.density).coerceAtLeast(1f)
-        val ratio = (available / paint.measureText(value).coerceAtLeast(1f)).coerceAtMost(1f)
-        view.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, (config.textSize * ratio).coerceAtLeast(12f))
+        var ratio = (available / paint.measureText(value).coerceAtLeast(1f)).coerceAtMost(1f)
+        if (fitHeight) {
+            val detail = if (showFieldDetail(context, config)) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 14f, metrics) else 0f
+            val availableHeight = (bodyHeight(context, config) - detail - 6 * metrics.density).coerceAtLeast(0f)
+            val lineHeight = kotlin.math.ceil(paint.fontMetrics.descent) - kotlin.math.floor(paint.fontMetrics.ascent)
+            ratio = minOf(ratio, availableHeight / lineHeight.coerceAtLeast(1f))
+            view.setViewVisibility(id, if (availableHeight >= 12 * metrics.density) View.VISIBLE else View.GONE)
+            view.setInt(R.id.field_root, "setMinimumHeight", minOf(44 * metrics.density, bodyHeight(context, config)).toInt())
+        }
+        view.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, (config.textSize.coerceAtLeast(12) * ratio).coerceAtLeast(1f))
         view.setInt(id, "setGravity", fieldGravity(config))
     }
 
@@ -140,14 +156,14 @@ class CrowExtension : KarooExtension("crow", "6"), CameraLink.Listener {
             "camera-record" -> {
                 title = "Camera recording"
                 value = if (recording) "Stop" else "Start"
-                detail = if (recording) String.format(Locale.ROOT, "REC %02d:%02d", link!!.seconds / 60, link.seconds % 60) else "Tap to record video"
+                detail = if (recording) String.format(Locale.ROOT, "REC %02d:%02d", link!!.seconds / 60, link.seconds % 60) else "Tap to start"
                 command = "record"
                 enabled = idle || CameraControls.canShutter(fresh, busy, mode, state) && mode == 1
             }
             "camera-photo" -> {
                 title = "Still photo"
-                value = "Take photo"
-                detail = if (state == 3) "Unavailable while capturing" else "Tap to capture one photo"
+                value = "Shoot"
+                detail = if (state == 3) "Busy capturing" else "Tap to shoot"
                 command = "take-photo"
                 enabled = idle
             }
@@ -161,7 +177,7 @@ class CrowExtension : KarooExtension("crow", "6"), CameraLink.Listener {
             else -> {
                 title = "Camera status"
                 value = when {
-                    recording -> "Recording"
+                    recording -> "REC"
                     busy -> "Working…"
                     state == 3 -> "Capturing"
                     state == 0 -> "Screen off"
@@ -169,25 +185,24 @@ class CrowExtension : KarooExtension("crow", "6"), CameraLink.Listener {
                     state == 5 -> "Pre-recording"
                     else -> "Ready"
                 }
-                detail = if (recording) String.format(Locale.ROOT, "%s • %02d:%02d", battery, link!!.seconds / 60, link.seconds % 60) else "Battery $battery"
+                detail = if (recording) String.format(Locale.ROOT, "%s • %02d:%02d", battery, link!!.seconds / 60, link.seconds % 60) else "$battery • ${modeName(mode)}"
                 enabled = true // Read-only: no pending intent is attached.
             }
         }
         if (!fresh) {
-            value = if (fieldId == "camera-status") { if (link?.ready == true) "No signal" else "Disconnected" } else "Unavailable"
+            value = if (fieldId == "camera-status") { if (link?.ready == true) "No signal" else "Offline" } else "Offline"
             detail = "Open Crow to reconnect"
             enabled = fieldId == "camera-status"
         } else if (busy && fieldId != "camera-status") detail = "Waiting for camera…"
         view.setTextViewText(R.id.field_title, title)
         view.setTextViewText(R.id.field_value, value)
         view.setTextViewText(R.id.field_detail, detail)
-        view.setTextColor(R.id.field_value, context.getColor(if (enabled || config.preview) R.color.field_text else R.color.field_disabled))
-        styleValue(context, config, view, R.id.field_value, value)
+        view.setTextColor(R.id.field_value, context.getColor(if (recording && fieldId == "camera-status") R.color.field_recording else if (enabled || config.preview) R.color.field_text else R.color.field_disabled))
+        styleValue(context, config, view, R.id.field_value, value, fitHeight = true)
         view.setInt(R.id.field_detail, "setGravity", fieldGravity(config))
         view.setBoolean(R.id.field_root, "setEnabled", enabled && !config.preview)
         view.setContentDescription(R.id.field_root, "$title: $value. $detail")
-        val heightDp = config.viewSize.second / context.resources.displayMetrics.density
-        view.setViewVisibility(R.id.field_detail, if (heightDp >= 80) View.VISIBLE else View.GONE)
+        view.setViewVisibility(R.id.field_detail, if (showFieldDetail(context, config)) View.VISIBLE else View.GONE)
         if (!config.preview && command != null) view.setOnClickPendingIntent(R.id.field_root, action(context, command))
         return view
     }
