@@ -2,6 +2,7 @@ package dev.crow.karoo;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
 import android.bluetooth.BluetoothDevice;
 import android.content.pm.PackageManager;
 import android.os.*;
@@ -15,6 +16,9 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
     private CameraLink link;
     private CameraSession session;
     private TextView message, status;
+    private TextView gpsStatus;
+    private Switch gpsSwitch;
+    private boolean updatingGpsSwitch;
     private Button shutter, photoMode, videoMode;
     private LinearLayout devices;
     private final HashSet<String> seen = new HashSet<>();
@@ -40,6 +44,13 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         videoMode = button(root, "Video mode", () -> link.switchMode(1));
         button(root, "Disconnect", () -> { link.close(); link.report("Disconnected. Recording may continue on the camera."); });
         button(root, "Forget camera", () -> { devices.removeAllViews(); link.forgetCamera(); });
+        gpsSwitch = new Switch(this); gpsSwitch.setText("Forward GPS to camera"); gpsSwitch.setMinHeight(dp(56)); root.addView(gpsSwitch);
+        gpsSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (updatingGpsSwitch) return;
+            if (checked) enableGps(); else stopService(new Intent(this, GpsForwardingService.class));
+        });
+        gpsStatus = text(root, session.gpsStatus, 16);
+        text(root, "GPS forwarding uses this device’s GPS and sends telemetry for DJI Mimo testing. It stays active with a notification until you turn it off or tap Stop in the notification.", 14);
         text(root, "Add Crow Camera to a Karoo ride screen for in-ride control. The enabled extension keeps the connection when you leave this app. Disconnecting never stops a camera recording.", 14);
         changed();
     }
@@ -55,6 +66,17 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
     private String[] neededPermissions() {
         return Build.VERSION.SDK_INT >= 31 ? new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT} : new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
     }
+    private void enableGps() {
+        if (!permissions()) return;
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            String[] required = Build.VERSION.SDK_INT >= 33
+                ? new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS}
+                : new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION};
+            requestPermissions(required, 2); return;
+        }
+        try { startForegroundService(new Intent(this, GpsForwardingService.class)); }
+        catch (RuntimeException e) { session.gpsStatus = "GPS could not start: " + e.getClass().getSimpleName(); changed(); }
+    }
     private boolean permissions() {
         String[] needed = neededPermissions();
         for (String p : needed) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) { requestPermissions(needed, 1); return false; }
@@ -62,6 +84,11 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
     }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
+        if (request == 2) {
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) enableGps();
+            else { session.gpsStatus = "Precise location permission is needed for GPS forwarding"; changed(); }
+            return;
+        }
         boolean allowed = results.length > 0;
         for (int r : results) allowed &= r == PackageManager.PERMISSION_GRANTED;
         if (allowed) { seen.clear(); devices.removeAllViews(); link.scan(); }
@@ -72,6 +99,10 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
     }
     @Override public void changed() {
         if (message == null) return;
+        if (gpsStatus != null) gpsStatus.setText(session.gpsStatus);
+        if (gpsSwitch != null) {
+            updatingGpsSwitch = true; gpsSwitch.setChecked(session.gpsRunning); updatingGpsSwitch = false;
+        }
         message.setText(link.message);
         boolean fresh = link.fresh();
         String state = !link.ready ? "Camera disconnected" : !fresh ? "Waiting for live status" : link.state == 3 ? "CAPTURING" : "Camera ready";

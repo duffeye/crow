@@ -14,6 +14,25 @@ An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead
 
 **Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The latest layout, touch-target, and capacity additions still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
 
+## GPS forwarding (0.7.0, experimental)
+
+Open Crow Camera, connect to the Action 4, then turn on **Forward GPS to camera**. Grant precise Location permission and allow notifications when prompted. Enable GPS on the Karoo and wait outdoors for a good fix. Forwarding is off by default; it does not restart itself after an app/process or device restart. On a phone, it uses that phone's GPS, not the Karoo's.
+
+A user-started Android location foreground service keeps receiving measured GPS while you return to the ride screen. Its notification opens Crow and offers **Stop**; the app's switch also stops it. If notifications are denied on Android 13+, use the switch or Android's active-apps controls to stop it. No background-location permission, boot receiver, network upload, or location logging is used. While active, the GPS service owns the same shared BLE link as the app/extension. Disabling the extension alone does not stop GPS; turn the switch off or use Stop. Disconnecting the camera pauses transmission.
+
+The current Karoo extension location event exposes coordinates and heading but not the full timestamp/accuracy/altitude/satellite fields DJI requires. Crow therefore uses Android's **GPS provider on the Karoo itself**, sharing the device GNSS receiver rather than injecting incomplete SDK events. It waits for measured altitude, speed, horizontal/vertical/speed accuracy and at least four satellites used in a fresh fix. It derives north/east velocity from measured speed and bearing, and downward velocity from successive measured altitudes. Missing or poor data is not replaced with made-up precision or satellite counts. If Karoo's provider omits required measurements, the status explains the wait and no GPS packet is sent.
+
+DJI command **0017** carries a 48-byte little-endian payload: date/time, E7 coordinates, millimetre altitude and accuracy, centimetre/second velocity and speed accuracy, and satellite count. Protocol time is UTC+8 with date rollover normalized, independent of the rider's timezone. The source GPS fix supplies its timestamp. New fixes are requested up to 10 Hz; actual rate depends on Karoo hardware. Duplicate, stale, too-fast, mock, invalid, and inaccurate fixes are rejected; two fresh fixes are needed after a gap to derive vertical velocity. No GPS is sent while the camera reports sleep.
+
+Telemetry uses the existing serialized GATT writer, only when no camera command/write is pending. It drops samples instead of delaying controls or replaying old positions. A GPS frame has four 20-byte-or-smaller ATT fragments. **GPS packets sent to camera** means those writes completed; it does not prove the camera stored telemetry or that Mimo supports every overlay. No pixels, captions, speedometer, or map are burned into the video by Crow.
+
+### Physical GPS/Mimo validation
+
+1. Keep a known working APK as a fallback. Connect the camera, enable forwarding and precise location, and wait for **GPS packets sent to camera** outdoors. Check the notification Stop action and app switch.
+2. Record a short moving test clip, stop it, then transfer/import it through DJI Mimo. Check whether Dashboard/GPS overlays are offered and whether position, speed, elevation, date/time, and timing match the ride. Camera firmware and Mimo behavior remain unverified in the cloud.
+3. Compare a recording with forwarding off. Check GPS loss pauses writes, a new fix resumes them, camera sleep/disconnect does not collect a backlog, and recording/photo/mode buttons remain responsive.
+4. Return to ride pages, switch pages and lock the screen while forwarding. Verify status returns on reopening Crow. Stop forwarding and confirm the notification and GPS subscription end while ordinary extension camera control remains usable.
+
 ## Battery and storage tiles (0.6.0)
 
 Add these read-only fields from **Crow Camera** in your ride profile:

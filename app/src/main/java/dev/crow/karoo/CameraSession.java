@@ -18,6 +18,8 @@ final class CameraSession implements CameraLink.Listener {
         return instance;
     }
     final CameraLink link;
+    boolean gpsRunning;
+    String gpsStatus = "GPS forwarding off";
     private final Context context;
     private final Set<CameraLink.Listener> owners = Collections.newSetFromMap(new IdentityHashMap<>());
     private CameraSession(Context context) { this.context = context; link = new CameraLink(context, this); }

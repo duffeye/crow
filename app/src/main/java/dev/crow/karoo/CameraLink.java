@@ -34,6 +34,9 @@ final class CameraLink {
     boolean ready, busy;
     int mode = -1, state = -1, battery = -1, seconds;
     long videoSecondsRemaining = -1, photosRemaining = -1;
+    int powerMode = -1;
+    private int gpsFragments;
+    long lastGpsWriteAt;
     long statusAt;
 
     CameraLink(Context context, Listener listener) {
@@ -101,6 +104,7 @@ final class CameraLink {
     }
     private void cancel(Runnable task) { if (task != null) handler.removeCallbacks(task); }
     void close() {
+        powerMode = -1; gpsFragments = 0; lastGpsWriteAt = 0;
         capturePlan.cancel();
         stopScanning(); cancel(connectTimeout); cancel(writeTimeout); cancel(commandTimeout);
         ready = false; busy = false; writing = false; pendingSeq = -1; targetMode = -1; statusAt = 0;
@@ -157,7 +161,9 @@ final class CameraLink {
                 if (g != gatt) return;
                 cancel(writeTimeout);
                 if (status != 0) { fail("Bluetooth write failed (" + status + "). Check camera state before retrying."); return; }
-                writes.poll(); writing = false; pump();
+                writes.poll(); writing = false;
+                if (gpsFragments > 0 && --gpsFragments == 0) lastGpsWriteAt = android.os.SystemClock.elapsedRealtime();
+                pump();
             });
         }
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c) {
@@ -178,6 +184,12 @@ final class CameraLink {
         // Default ATT MTU of 23 permits 20 data bytes; serialize every fragment.
         for (int p = 0; p < frame.length; p += 20) writes.add(Arrays.copyOfRange(frame, p, Math.min(p + 20, frame.length)));
         pump();
+    }
+    boolean sendGps(byte[] payload) {
+        if (payload.length != 48 || !fresh() || powerMode != 0 || busy || writing || !writes.isEmpty() || gatt == null || tx == null) return false;
+        gpsFragments = 4; // 66-byte DJI frame, using the existing 20-byte ATT fragments.
+        send(0, ++sequence, 0, 0x17, payload);
+        return gpsFragments > 0;
     }
     private void pump() {
         if (writing || writes.isEmpty() || gatt == null || tx == null) return;
@@ -215,6 +227,7 @@ final class CameraLink {
             videoSecondsRemaining = capacity.videoSeconds;
             photosRemaining = capacity.photos;
             statusAt = android.os.SystemClock.elapsedRealtime();
+            powerMode = p[28] & 255;
             boolean captureNow = capturePlan.onStatus(mode, state);
             if (targetMode >= 0 && mode == targetMode) {
                 targetMode = -1; pendingSeq = -1; busy = false; cancel(commandTimeout);
