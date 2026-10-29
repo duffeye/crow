@@ -21,7 +21,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Karoo keeps this service bound while the extension is enabled. It owns one shared BLE session. */
-class CrowExtension : KarooExtension("crow", "4"), CameraLink.Listener {
+class CrowExtension : KarooExtension("crow", "5"), CameraLink.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val timers = mutableSetOf<Runnable>()
     private val session by lazy { CameraSession.get(this) }
@@ -30,13 +30,13 @@ class CrowExtension : KarooExtension("crow", "4"), CameraLink.Listener {
     private var destroyed = false
     private var connected = false
 
-    override val types = listOf(object : DataTypeImpl("crow", "camera") {
+    override val types = listOf("camera", "camera-record", "camera-photo", "camera-status", "camera-mode").map { fieldId -> object : DataTypeImpl("crow", fieldId) {
         override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
             val cancelled = AtomicBoolean(false)
             val tick = object : Runnable {
                 override fun run() {
                     if (cancelled.get() || destroyed) return
-                    emitter.updateView(render(context, config))
+                    emitter.updateView(if (fieldId == "camera") render(context, config) else renderSeparate(context, config, fieldId))
                     main.postDelayed(this, 1000)
                 }
             }
@@ -54,7 +54,7 @@ class CrowExtension : KarooExtension("crow", "4"), CameraLink.Listener {
                 }
             }
         }
-    })
+    } }
 
     override fun onCreate() {
         super.onCreate()
@@ -89,6 +89,84 @@ class CrowExtension : KarooExtension("crow", "4"), CameraLink.Listener {
         context, name.hashCode(), Intent(context, CameraActionReceiver::class.java).setAction(name),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+
+    private fun modeName(mode: Int) = when (mode) {
+        0 -> "Slow motion"
+        1 -> "Video"
+        2 -> "Timelapse"
+        5 -> "Photo"
+        10 -> "Hyperlapse"
+        else -> "Mode $mode"
+    }
+
+    private fun renderSeparate(context: Context, config: ViewConfig, fieldId: String): RemoteViews {
+        val view = RemoteViews(context.packageName, R.layout.ride_field)
+        val link = if (config.preview) null else session.link
+        val fresh = config.preview || link?.fresh() == true
+        val mode = link?.mode ?: 1
+        val state = link?.state ?: 1
+        val busy = link?.busy == true
+        val recording = fresh && mode == 1 && state == 3
+        val idle = CameraControls.canSwitchMode(fresh, busy, state)
+        val battery = if (config.preview) "85%" else if (link != null && link.battery >= 0) "${link.battery}%" else "—"
+        var title: String
+        var value: String
+        var detail: String
+        var command: String? = null
+        var enabled = false
+        when (fieldId) {
+            "camera-record" -> {
+                title = "Camera recording"
+                value = if (recording) "Stop" else "Start"
+                detail = if (recording) String.format(Locale.ROOT, "REC %02d:%02d", link!!.seconds / 60, link.seconds % 60) else "Tap to record video"
+                command = "record"
+                enabled = idle || CameraControls.canShutter(fresh, busy, mode, state) && mode == 1
+            }
+            "camera-photo" -> {
+                title = "Still photo"
+                value = "Take photo"
+                detail = if (state == 3) "Unavailable while capturing" else "Tap to capture one photo"
+                command = "take-photo"
+                enabled = idle
+            }
+            "camera-mode" -> {
+                title = "Camera mode"
+                value = modeName(mode)
+                detail = if (state == 3) "Locked while capturing" else if (mode == 5) "Tap for Video" else "Tap for Photo"
+                command = "toggle-mode"
+                enabled = idle
+            }
+            else -> {
+                title = "Camera status"
+                value = when {
+                    recording -> "Recording"
+                    busy -> "Working…"
+                    state == 3 -> "Capturing"
+                    state == 0 -> "Screen off"
+                    state == 2 -> "Playback"
+                    state == 5 -> "Pre-recording"
+                    else -> "Ready"
+                }
+                detail = if (recording) String.format(Locale.ROOT, "%s • %02d:%02d", battery, link!!.seconds / 60, link.seconds % 60) else "Battery $battery"
+                enabled = true // Read-only: no pending intent is attached.
+            }
+        }
+        if (!fresh) {
+            value = if (fieldId == "camera-status") { if (link?.ready == true) "No signal" else "Disconnected" } else "Unavailable"
+            detail = "Open Crow to reconnect"
+            enabled = fieldId == "camera-status"
+        } else if (busy && fieldId != "camera-status") detail = "Waiting for camera…"
+        view.setTextViewText(R.id.field_title, title)
+        view.setTextViewText(R.id.field_value, value)
+        view.setTextViewText(R.id.field_detail, detail)
+        view.setTextColor(R.id.field_value, if (recording && fieldId != "camera-photo" && fieldId != "camera-mode") Color.rgb(180, 0, 0) else if (enabled) Color.BLACK else Color.DKGRAY)
+        view.setBoolean(R.id.field_root, "setEnabled", enabled && !config.preview)
+        view.setContentDescription(R.id.field_root, "$title: $value. $detail")
+        val heightDp = config.viewSize.second / context.resources.displayMetrics.density
+        view.setViewVisibility(R.id.field_detail, if (heightDp >= 80) View.VISIBLE else View.GONE)
+        if (!config.preview && command != null) view.setOnClickPendingIntent(R.id.field_root, action(context, command))
+        return view
+    }
 
     private fun render(context: Context, config: ViewConfig): RemoteViews {
         val view = RemoteViews(context.packageName, R.layout.ride_camera)

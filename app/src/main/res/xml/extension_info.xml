@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ExtensionInfo id="crow" displayName="@string/extension_name" icon="@drawable/camera" scansDevices="false">
     <DataType typeId="camera" displayName="@string/camera_field_name" description="@string/camera_field_description" graphical="true" icon="@drawable/camera" />
+    <DataType typeId="camera-record" displayName="@string/record_field_name" description="@string/record_field_description" graphical="true" icon="@drawable/camera" />
+    <DataType typeId="camera-photo" displayName="@string/photo_field_name" description="@string/photo_field_description" graphical="true" icon="@drawable/camera" />
+    <DataType typeId="camera-status" displayName="@string/status_field_name" description="@string/status_field_description" graphical="true" icon="@drawable/camera" />
+    <DataType typeId="camera-mode" displayName="@string/mode_field_name" description="@string/mode_field_description" graphical="true" icon="@drawable/camera" />
     <BonusAction actionId="shutter" displayName="@string/camera_shutter" />
     <BonusAction actionId="photo" displayName="@string/camera_photo_mode" />
     <BonusAction actionId="video" displayName="@string/camera_video_mode" />

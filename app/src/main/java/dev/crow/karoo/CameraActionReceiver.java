@@ -13,6 +13,9 @@ public final class CameraActionReceiver extends BroadcastReceiver {
     }
     static void perform(CameraSession session, String action) {
         if ("shutter".equals(action)) session.link.shutter();
+        else if ("record".equals(action)) session.link.record();
+        else if ("take-photo".equals(action)) session.link.takePhoto();
+        else if ("toggle-mode".equals(action)) session.link.switchMode(session.link.mode == 5 ? 1 : 5);
         else if ("photo".equals(action)) session.link.switchMode(5);
         else if ("video".equals(action)) session.link.switchMode(1);
         else if ("reconnect".equals(action)) session.reconnectIfAllowed();

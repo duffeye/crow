@@ -6,4 +6,12 @@
     <string name="camera_photo_mode">Camera: Photo mode</string>
     <string name="camera_video_mode">Camera: Video mode</string>
     <string name="camera_reconnect">Reconnect camera</string>
+    <string name="record_field_name">Start/stop recording</string>
+    <string name="record_field_description">Tap to start or stop video. Selects Video first if needed.</string>
+    <string name="photo_field_name">Take photo</string>
+    <string name="photo_field_description">Tap to select Photo mode and take one still. Disabled while recording.</string>
+    <string name="status_field_name">Camera status</string>
+    <string name="status_field_description">Connection, capture state, battery level, and recording time.</string>
+    <string name="mode_field_name">Camera mode</string>
+    <string name="mode_field_description">Shows the current mode. Tap to switch between Photo and Video while idle.</string>
 </resources>

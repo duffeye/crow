@@ -21,6 +21,7 @@ final class CameraLink {
     private final BluetoothAdapter adapter;
     private final SharedPreferences preferences;
     private final ArrayDeque<byte[]> writes = new ArrayDeque<>();
+    private final CapturePlan capturePlan = new CapturePlan();
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic tx;
     private Protocol.Decoder decoder = new Protocol.Decoder();
@@ -99,6 +100,7 @@ final class CameraLink {
     }
     private void cancel(Runnable task) { if (task != null) handler.removeCallbacks(task); }
     void close() {
+        capturePlan.cancel();
         stopScanning(); cancel(connectTimeout); cancel(writeTimeout); cancel(commandTimeout);
         ready = false; busy = false; writing = false; pendingSeq = -1; targetMode = -1; statusAt = 0;
         mode = state = battery = -1; writes.clear(); tx = null;
@@ -208,10 +210,12 @@ final class CameraLink {
             mode = p[0] & 255; state = p[1] & 255; seconds = Protocol.u16(p, 5);
             battery = (p[37] & 255) <= 100 ? p[37] & 255 : -1;
             statusAt = android.os.SystemClock.elapsedRealtime();
+            boolean captureNow = capturePlan.onStatus(mode, state);
             if (targetMode >= 0 && mode == targetMode) {
                 targetMode = -1; pendingSeq = -1; busy = false; cancel(commandTimeout);
                 report(mode == 5 ? "Photo mode ready. Tap Take photo." : "Video mode ready.");
             }
+            if (captureNow) shutter();
             listener.changed();
         }
         if (f.response() && f.seq == pendingSeq && f.set == pendingSet && f.id == pendingId) {
@@ -220,6 +224,7 @@ final class CameraLink {
                 return;
             }
             targetMode = -1;
+            capturePlan.cancel();
             cancel(commandTimeout); pendingSeq = -1; busy = false;
             // Allow a status push to arrive before enabling another toggle; do not assume an ACK means recording.
             if (p.length > 0 && p[0] == 0) {
@@ -234,6 +239,13 @@ final class CameraLink {
         if (!CameraControls.canShutter(fresh(), busy, mode, state)) return;
         command(0, 0x11, new byte[]{1, 1, 0, 0});
     }
+    void record() { capture(1); }
+    void takePhoto() { capture(5); }
+    private void capture(int requestedMode) {
+        CapturePlan.Action action = capturePlan.request(requestedMode, fresh(), busy, mode, state);
+        if (action == CapturePlan.Action.SHUTTER) shutter();
+        else if (action == CapturePlan.Action.PHOTO_MODE || action == CapturePlan.Action.VIDEO_MODE) switchMode(requestedMode);
+    }
     void switchMode(int requestedMode) {
         if (!CameraControls.canSwitchMode(fresh(), busy, state) || mode == requestedMode || !(requestedMode == 1 || requestedMode == 5)) return;
         targetMode = requestedMode;
@@ -246,6 +258,7 @@ final class CameraLink {
         if (!ready) return;
         report("Command sent; waiting for camera…");
         commandTimeout = () -> {
+            capturePlan.cancel();
             boolean switchingMode = targetMode >= 0;
             busy = false; pendingSeq = -1; targetMode = -1;
             report(switchingMode ? "Mode change not confirmed. Check camera mode before retrying." : "No command acknowledgement. Check camera state before retrying.");

@@ -12,7 +12,22 @@ An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead
 - Display camera-reported capture state, elapsed time, battery, and mode.
 - Disable controls after five seconds without live status; serialize BLE writes and time out failed operations. Shutter commands are never automatically retried.
 
-**Status:** the user has confirmed the 0.3.0 app's pairing, video start/stop, still photos, direct mode selection, and automatic reconnection on Karoo 3. Version 0.4.0 adds the ride-screen extension; its display, touch controls, controller actions, and connection lifetime still require physical Karoo testing. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+**Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. Version 0.5.0 adds four separate fields and confirmed-mode capture sequences; those additions still need physical-device validation. No hardware is attached to this cloud workspace. No wake-from-sleep, GPS injection, video preview, or resolution settings yet.
+
+## Separate ride fields (0.5.0)
+
+After installing 0.5.0, edit a ride profile's data page and choose any of these fields under **Crow Camera**. The existing combined **Camera control** field remains available, with its existing ID preserved.
+
+| Field | Behavior |
+| --- | --- |
+| **Start/stop recording** | Tap Start to select Video if needed and start recording after camera confirmation; tap Stop to stop an active video. |
+| **Take photo** | Tap to select Photo if needed, wait for confirmation, and trigger the photo shutter once. Disabled during recording/capture. The camera stays in Photo mode afterward. |
+| **Camera status** | Read-only connection/capture state, battery percentage, and recording time. Shows Disconnected or No signal when unavailable. |
+| **Camera mode** | Shows the current mode; tap to switch Photo/Video while idle. Disabled during capture. |
+
+All fields use the same camera connection and update at 1 Hz. They can be placed independently and use text that scales to the available space. Very short fields hide the secondary detail line. Controls are disabled without fresh status or while a command is pending. A failed/timed-out/disconnected mode change cancels the requested capture; a later status update never replays it. A camera capture/playback/sleep transition during a pending mode change also cancels the capture. Profile previews have no click actions.
+
+To test, place all four fields on one page. Start in Photo mode and use Start to verify Video switching followed by recording; confirm Stop works and Photo/Mode are disabled during recording. Then use Take photo from Video mode and verify the photo is saved. Check status, battery/time, mode toggling, and unavailable states after disconnecting. Keep your working 0.4.0 APK as a fallback.
 
 ## Ride-screen extension (0.4.0)
 
@@ -82,7 +97,7 @@ To test, pair, leave the app, and reopen it with the camera awake. Check live st
 
 ## Protocol and architecture
 
-`Protocol.java` implements little-endian DJI R SDK framing, DJI's seeded CRC16/CRC32, and bounded notification reassembly. `CameraLink.java` manages discovery, GATT serialization, the two-way pairing handshake, status subscription, and acknowledged shutter key events and explicit Photo/Video mode selection. `MainActivity.java` provides large app controls. `CameraSession.java` shares a single application-context link between that activity and `CrowExtension.kt`, a Karoo-bound extension that emits RemoteViews and handles bonus actions. Immutable, explicit pending intents target a non-exported receiver for ride-field clicks. Shared `CameraControls.java` gates commands from every UI. Camera state comes from status pushes, not assumed successful writes.
+`Protocol.java` implements little-endian DJI R SDK framing, DJI's seeded CRC16/CRC32, and bounded notification reassembly. `CameraLink.java` manages discovery, GATT serialization, the two-way pairing handshake, status subscription, and acknowledged shutter key events and explicit Photo/Video mode selection. `MainActivity.java` provides large app controls. `CapturePlan.java` sequences dedicated recording/photo requests through a confirmed mode change and cancels them on failure. `CameraSession.java` shares a single application-context link between that activity and `CrowExtension.kt`, a Karoo-bound extension that emits RemoteViews and handles bonus actions. Immutable, explicit pending intents target a non-exported receiver for ride-field clicks. Shared `CameraControls.java` gates commands from every UI. Camera state comes from status pushes, not assumed successful writes.
 
 Protocol reference: DJI's [Osmo GPS Controller demo](https://github.com/dji-sdk/Osmo-GPS-Controller-Demo), inspected at commit `92fe23e5a749f189593f980a26a105c3bb66aa1c`, especially `docs/getting_started_guide.md`, `docs/protocol.md`, and `docs/protocol_data_segment.md`. Uses service FFF0, notifications FFF4, writes FFF5, pairing 0019, status subscription 1D05, status push 1D02, key events 0011, and direct mode selection 1D04. Unit tests include DJI's published pairing and mode-switch wire vectors as independent checksum/encoding references, plus fragmented, corrupt, and coalesced receive streams.
 
