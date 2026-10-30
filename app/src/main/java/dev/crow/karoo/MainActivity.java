@@ -33,7 +33,7 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         ScrollView scroll = new ScrollView(this); scroll.setFitsSystemWindows(true);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(12), dp(12), dp(12)); scroll.addView(root); setContentView(scroll);
-        TextView title = text(root, "CROW  /  ACTION 4", 22); title.setTextColor(Color.WHITE);
+        TextView title = text(root, "CROW  /  DJI ACTION", 22); title.setTextColor(Color.WHITE);
         status = text(root, "Camera disconnected", 26);
         message = text(root, "", 16);
         button(root, "Find camera", () -> { if (permissions()) { seen.clear(); devices.removeAllViews(); link.scan(); } });
@@ -106,6 +106,7 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
         message.setText(link.message);
         boolean fresh = link.fresh();
         String state = !link.ready ? "Camera disconnected" : !fresh ? "Waiting for live status" : link.state == 3 ? "CAPTURING" : "Camera ready";
+        if (link.cameraModel != null) state = link.cameraModel.displayName + (link.cameraModel.experimental ? " (experimental)" : "") + "\n" + state;
         if (fresh) state += String.format(Locale.ROOT, "\n%s • Battery %s\n%02d:%02d", modeName(link.mode), link.battery < 0 ? "—" : link.battery + "%", link.seconds / 60, link.seconds % 60);
         status.setText(state); status.setTextColor(fresh && link.state == 3 ? Color.rgb(255, 100, 100) : Color.WHITE);
         shutter.setText(CameraControls.shutterLabel(link.mode, link.state));

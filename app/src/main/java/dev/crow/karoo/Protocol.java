@@ -8,6 +8,7 @@ import java.util.List;
 public final class Protocol {
     private Protocol() {}
     public static int u16(byte[] b, int p) { return (b[p] & 255) | ((b[p + 1] & 255) << 8); }
+    public static long u32(byte[] b, int p) { return (long) u16(b, p) | ((long) u16(b, p + 2) << 16); }
     static void put(byte[] b, int p, long value, int count) {
         for (int i = 0; i < count; i++) b[p + i] = (byte) (value >>> (8 * i));
     }
@@ -38,10 +39,13 @@ public final class Protocol {
         b[26] = (byte) (previouslyPaired ? 0 : 1); put(b, 27, code, 2);
         return b;
     }
-    /** Mode-switch payload from DJI's published 1D04 example (including its reserved bytes). */
-    public static byte[] modeSwitch(int mode) {
+    /** Retains DJI's 1D04 example layout: 00 00 <model ID, LE>, mode, reserved. */
+    static byte[] modeSwitch(CameraModel model, int mode) {
+        if (model == null) throw new IllegalArgumentException("Camera model is required");
         if (mode < 0 || mode > 255) throw new IllegalArgumentException("Invalid mode");
-        return new byte[]{0, 0, 0x33, (byte) 0xff, (byte) mode, 1, 0x47, 0x39, 0x36};
+        byte[] payload = new byte[]{0, 0, 0, 0, (byte) mode, 1, 0x47, 0x39, 0x36};
+        put(payload, 2, model.deviceId, 2);
+        return payload;
     }
     public static final class Frame {
         public final int type, seq, set, id;

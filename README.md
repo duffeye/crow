@@ -1,12 +1,28 @@
 # Crow Camera for Karoo
 
-An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead Karoo 3** and **DJI Osmo Action 4**. No phone, Wi-Fi connection, DJI Mimo session, or cloud account is needed by the app.
+An Android Bluetooth remote and Karoo ride-screen extension for the **Hammerhead Karoo 3** and compatible **DJI Osmo Action cameras**. No phone, Wi-Fi connection, DJI Mimo session, or cloud account is needed by the app.
 
 ## Download and install
 
 Download the `.apk` attachment from [GitHub Releases](https://github.com/duffeye/crow/releases). Public release downloads do not require a GitHub account. Choose the APK under **Assets**, rather than a source-code archive. The release notes include sideloading instructions and known limitations. Current releases are debug-signed pre-releases; an update from another signing key requires uninstalling the old app and pairing again.
 
 Maintainers: pushing a `vX.Y.Z` tag runs the Android checks and, after they pass, publishes a pre-release with the versioned APK and SHA-256 checksum. The tag must match `versionName` in `app/build.gradle`, and `release-notes/vX.Y.Z.md` must exist. Publication uses GitHub Actions' repository token; no additional secret is required.
+
+## Camera compatibility (0.8.0)
+
+| Camera | Crow support |
+| --- | --- |
+| Osmo Action 4 | Camera controls and the combined extension were tested by the user on Karoo. Latest additions and GPS still need device validation. |
+| Osmo Action 5 Pro | Experimental: recognizes DJI's documented model ID and builds model-specific Photo/Video commands. Hardware validation pending. |
+| Osmo Action 6 | Experimental: recognizes DJI's documented model ID and builds model-specific Photo/Video commands. Hardware validation pending. |
+| Original Osmo Action, Action 2, Action 3 | Unsupported: not listed for this protocol in the DJI reference used here. Firmware support has not been established. |
+| Osmo 360, Osmo Nano, unknown/future models | Unsupported by Crow. The 360 uses different capture modes; Nano is listed as not yet supported by the referenced DJI firmware documentation. |
+
+Use current camera firmware. Crow identifies a camera from its approved Bluetooth handshake, not its advertised name. A recognized model uses the existing shared status, shutter, capacity, and GPS protocol paths. An unrecognized ID produces an explicit error and does not enable controls. The detected model appears in the app, with a persistent experimental label for Action 5 Pro and Action 6. Existing Action 4 pairing and ride-field IDs are preserved; only one camera is connected at a time.
+
+Source: [DJI model IDs and data commands](https://github.com/dji-sdk/Osmo-GPS-Controller-Demo/blob/92fe23e5a749f189593f980a26a105c3bb66aa1c/docs/protocol_data_segment.md) and [Action 5 Pro notification differences](https://github.com/dji-sdk/Osmo-GPS-Controller-Demo/blob/92fe23e5a749f189593f980a26a105c3bb66aa1c/docs/Q%26A.md). Mode commands retain the published Action 4 example's `00 00 <model-ID little-endian>` layout and reserved bytes, substituting the detected ID for the newer models. This extrapolation requires camera testing, rather than assuming the example establishes every model's wire behavior. Extra `0x55` notifications reported for Action 5 Pro are ignored by the frame decoder.
+
+For each new model, test first pairing/approval, reconnect, start/stop in Video, a Photo from Video, switching Photo/Video, battery/storage readings, disconnect/reconnect and the ride fields. Confirm both successful and rejected commands leave the live UI accurate. Record model and firmware versions when reporting results. Test GPS and DJI Mimo separately using the steps below; neither is implied by successful shutter control.
 
 ## Current capabilities
 
@@ -22,7 +38,7 @@ Maintainers: pushing a `vX.Y.Z` tag runs the Android checks and, after they pass
 
 ## GPS forwarding (0.7.0, experimental)
 
-Open Crow Camera, connect to the Action 4, then turn on **Forward GPS to camera**. Grant precise Location permission and allow notifications when prompted. Enable GPS on the Karoo and wait outdoors for a good fix. Forwarding is off by default; it does not restart itself after an app/process or device restart. On a phone, it uses that phone's GPS, not the Karoo's.
+Open Crow Camera, connect to a recognized camera, then turn on **Forward GPS to camera**. Grant precise Location permission and allow notifications when prompted. Enable GPS on the Karoo and wait outdoors for a good fix. Forwarding is off by default; it does not restart itself after an app/process or device restart. On a phone, it uses that phone's GPS, not the Karoo's.
 
 A user-started Android location foreground service keeps receiving measured GPS while you return to the ride screen. Its notification opens Crow and offers **Stop**; the app's switch also stops it. If notifications are denied on Android 13+, use the switch or Android's active-apps controls to stop it. No background-location permission, boot receiver, network upload, or location logging is used. While active, the GPS service owns the same shared BLE link as the app/extension. Disabling the extension alone does not stop GPS; turn the switch off or use Stop. Disconnecting the camera pauses transmission.
 
@@ -151,14 +167,14 @@ To test, pair, leave the app, and reopen it with the camera awake. Check live st
 
 ## First physical-device test
 
-1. Activate/update the Action 4 using DJI's normal setup if needed. Turn it on and disconnect other camera remotes/Mimo; the camera BLE connection can be occupied by another controller.
+1. Activate/update a recognized Osmo Action camera using DJI's normal setup if needed. Turn it on and disconnect other camera remotes/Mimo; the camera BLE connection can be occupied by another controller.
 2. Open Crow Camera on Karoo. Grant Bluetooth permissions (on older Android versions, scanning requires Location permission and Location enabled).
 3. Tap **Find camera**, select the intended camera, compare the four-digit code, and approve on the camera screen.
 4. Check battery and mode against the camera. If no camera appears, check its wireless settings and firmware; discovery uses DJI manufacturer data, not a device-name guess.
 5. Select **Video mode**, then start a short recording. Verify recording on the camera itself, elapsed-time updates, stopping, and that a playable file was saved.
 6. Tap **Photo mode**, wait for the camera-reported mode to change and the shutter to read **Take photo**, then tap it and verify the saved photo. Mode selection is disabled during recording. Other camera modes deliberately disable the shutter in this version.
 7. Walk out of range or turn off the camera. Confirm controls disable; wake the camera and tap **Reconnect**. Background the app during a recording and verify the camera continues recording; reopen and check it reconnects automatically before controlling it.
-8. Repeat with Karoo cycling sensors connected. Record Karoo OS and Action 4 firmware versions and any pairing or command error messages.
+8. Repeat with Karoo cycling sensors connected. Record Karoo OS, camera model, camera firmware version and any pairing or command error messages.
 
 ## Protocol and architecture
 

@@ -30,7 +30,8 @@ final class CameraLink {
     private boolean writing, scanning;
     private boolean reconnecting;
     private Runnable writeTimeout, commandTimeout, connectTimeout;
-    String message = "Turn on the Action 4, then find your camera.";
+    String message = "Turn on your DJI Osmo Action camera, then find it below.";
+    CameraModel cameraModel;
     boolean ready, busy;
     int mode = -1, state = -1, battery = -1, seconds;
     long videoSecondsRemaining = -1, photosRemaining = -1;
@@ -104,6 +105,7 @@ final class CameraLink {
     }
     private void cancel(Runnable task) { if (task != null) handler.removeCallbacks(task); }
     void close() {
+        cameraModel = null;
         powerMode = -1; gpsFragments = 0; lastGpsWriteAt = 0;
         capturePlan.cancel();
         stopScanning(); cancel(connectTimeout); cancel(writeTimeout); cancel(commandTimeout);
@@ -205,13 +207,19 @@ final class CameraLink {
                 if (p.length < 5 || p[4] != 0) fail("Camera rejected the pairing request.");
             } else if (p.length >= 33 && p[26] == 2) {
                 if (Protocol.u16(p, 27) != 0) { fail("Pairing declined on camera."); return; }
-                // Restrict this first release to Action 4. DJI documents device ID 0xFF33.
-                if (Protocol.u16(p, 0) != 0xff33) { fail("This prototype supports the Osmo Action 4 only."); return; }
+                // Identify from the approved protocol handshake, never a spoofable display name.
+                long deviceId = Protocol.u32(p, 0);
+                CameraModel detected = CameraModel.fromDeviceId(deviceId);
+                if (detected == null) {
+                    fail(String.format(Locale.ROOT, "Unsupported camera ID 0x%08X. Crow currently recognizes Action 4, Action 5 Pro and Action 6. Use current camera firmware.", deviceId));
+                    return;
+                }
+                cameraModel = detected;
                 byte[] ack = new byte[9]; Protocol.put(ack, 0, 0x12345678, 4);
                 send(0x20, f.seq, 0, 0x19, ack);
                 ready = true; cancel(connectTimeout);
                 send(0, ++sequence, 0x1d, 5, new byte[]{3, 20, 0, 0, 0, 0});
-                report("Paired. Waiting for camera status…");
+                report(detected.displayName + (detected.experimental ? " — experimental support; test controls before riding." : ".") + " Waiting for camera status…");
             }
             return;
         }
@@ -265,9 +273,9 @@ final class CameraLink {
         else if (action == CapturePlan.Action.PHOTO_MODE || action == CapturePlan.Action.VIDEO_MODE) switchMode(requestedMode);
     }
     void switchMode(int requestedMode) {
-        if (!CameraControls.canSwitchMode(fresh(), busy, state) || mode == requestedMode || !(requestedMode == 1 || requestedMode == 5)) return;
+        if (cameraModel == null || !CameraControls.canSwitchMode(fresh(), busy, state) || mode == requestedMode || !(requestedMode == 1 || requestedMode == 5)) return;
         targetMode = requestedMode;
-        command(0x1d, 4, Protocol.modeSwitch(requestedMode));
+        command(0x1d, 4, Protocol.modeSwitch(cameraModel, requestedMode));
     }
     private void command(int set, int id, byte[] payload) {
         busy = true; pendingSeq = ++sequence;

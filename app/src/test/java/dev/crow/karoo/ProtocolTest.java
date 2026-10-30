@@ -12,13 +12,31 @@ public class ProtocolTest {
     }
     @Test public void matchesDjiPublishedModeSwitchVector() {
         byte[] expected = hex("AA1B000100000000050057EE1D04000033FF0A01473936F4FAE1D0");
-        assertArrayEquals(expected, Protocol.encode(1, 5, 0x1d, 4, Protocol.modeSwitch(10)));
+        assertArrayEquals(expected, Protocol.encode(1, 5, 0x1d, 4, Protocol.modeSwitch(CameraModel.ACTION_4, 10)));
         Protocol.Frame frame = new Protocol.Decoder().accept(expected).get(0);
         assertEquals(5, frame.seq); assertEquals(0x1d, frame.set); assertFalse(frame.response());
     }
     @Test public void photoAndVideoUseExplicitModeSwitchPayloads() {
-        assertArrayEquals(hex("000033FF0501473936"), Protocol.modeSwitch(5));
-        assertArrayEquals(hex("000033FF0101473936"), Protocol.modeSwitch(1));
+        assertArrayEquals(hex("000033FF0501473936"), Protocol.modeSwitch(CameraModel.ACTION_4, 5));
+        assertArrayEquals(hex("000033FF0101473936"), Protocol.modeSwitch(CameraModel.ACTION_4, 1));
+    }
+    @Test public void modelSpecificPhotoAndVideoCommandsKeepDjiExampleLayout() {
+        assertArrayEquals(hex("000044FF0501473936"), Protocol.modeSwitch(CameraModel.ACTION_5_PRO, 5));
+        assertArrayEquals(hex("000044FF0101473936"), Protocol.modeSwitch(CameraModel.ACTION_5_PRO, 1));
+        assertArrayEquals(hex("000055FF0501473936"), Protocol.modeSwitch(CameraModel.ACTION_6, 5));
+        assertArrayEquals(hex("000055FF0101473936"), Protocol.modeSwitch(CameraModel.ACTION_6, 1));
+    }
+    @Test public void ignoresAction5NonProtocolNotificationsAroundSplitFrames() {
+        byte[] packet = Protocol.encode(0, 48, 0x1d, 2, new byte[38]);
+        Protocol.Decoder decoder = new Protocol.Decoder();
+        assertTrue(decoder.accept(hex("550200001122")).isEmpty());
+        assertTrue(decoder.accept(Arrays.copyOfRange(packet, 0, 15)).isEmpty());
+        byte[] tail = Arrays.copyOfRange(packet, 15, packet.length + 4);
+        tail[tail.length - 4] = 0x55;
+        List<Protocol.Frame> frames = decoder.accept(tail);
+        assertEquals(1, frames.size());
+        assertEquals(48, frames.get(0).seq);
+        assertEquals(1, decoder.accept(packet).size());
     }
     @Test public void matchesDjiPublishedPairingVector() {
         byte[] expected = hex("AA330002000000000100982F00197856341206383456789ABC00000000000000000000000000000000FE1F00000000796C667C");
