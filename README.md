@@ -36,7 +36,25 @@ For each new model, test first pairing/approval, reconnect, start/stop in Video,
 
 **Status:** the user has confirmed the 0.4.0 combined ride-screen extension and camera controls on Karoo 3. The latest layout, touch-target, and capacity additions still need physical-device validation; the user has reported clipping in 0.5.1. No hardware is attached to this cloud workspace. GPS forwarding is experimental (see below). No wake-from-sleep, video preview, or resolution settings yet.
 
-## GPS forwarding (0.7.0, experimental)
+## Battery efficiency (0.9.0)
+
+- GPS acquisition and forwarding are limited to **one fresh update per second**, including a rate cap if Android delivers fixes faster than requested. This reduces maximum GPS packet traffic by up to 90% compared with the previous 10 Hz request; it is not a measured battery-life improvement. GPS overlays may be less smooth on fast turns and need testing in Mimo.
+- When GPS forwarding is enabled, Crow removes its location request and satellite callback while the camera is disconnected, asleep, or has stale status. It resumes when an awake camera returns. It clears the old fix history on pause and requires two new usable fixes after resuming. The notification and switch remain enabled while paused. Other apps, including Karoo's ride recording, may still use the shared GPS hardware.
+- GPS continues at 1 Hz while a connected camera is awake and idle, so a fix can be ready before recording begins. Turn forwarding off when GPS metadata is unnecessary. No automatic camera sleep or disconnect is introduced while ride controls are in use.
+- Crow asks Android for a lower-power BLE connection interval after pairing. This is advisory; Android and the camera decide the actual interval. Test command latency and GPS delivery on your firmware.
+- Active ride fields share one refresh scheduler, and Crow builds/sends a field only when its displayed inputs change. Battery, storage, and mode fields do not refresh for unrelated recording-time changes. Video left updates on whole-minute changes. Previews render once, disconnected fields have no repeating refresh timer, and cancellation removes view work. Refresh work pauses while the screen is off and resumes when it turns on; camera control and GPS continue independently. Freshness checks still turn stale data into Offline/No signal.
+- Bluetooth discovery uses low-power scanning with a DJI manufacturer filter and reports each found camera once per search. Scans remain limited to 12 seconds. Reconnect remains a single attempt when explicitly requested or an owner first activates; Crow does not run a repeated scan/reconnect loop. The last session owner still releases Bluetooth when finished.
+- The foreground app avoids setting unchanged text; its refresh timer runs only while the activity is visible. Notification content is updated only when its status changes.
+
+DJI's documented status subscription is fixed at **2 Hz** (`push_freq=20`); a lower frequency is not supported. Crow keeps this subscription for accurate state, capacity and command confirmation instead of repeatedly polling or changing undocumented values. Camera recording settings and screen timeout usually have a larger effect on camera battery than the remote connection.
+
+### Battery and behavior validation
+
+No physical battery measurements were possible in the cloud. Compare equal-duration rides with the same Karoo brightness/sensors/navigation and camera firmware, recording settings and screen timeout. Test GPS off and GPS on separately, then compare with 0.8.0. Record battery percentages before/after and note temperature; a single short run is not a reliable battery-life estimate.
+
+Check start/stop, photo and mode controls while GPS is active. Put the camera to sleep or disconnect it: forwarding should pause while ordinary Karoo ride recording continues. Wake/reconnect, wait for new GPS fixes, and verify forwarding resumes without replaying old positions. Stop the service and check its location request is removed. Validate GPS timestamps and overlay smoothness in a short Mimo clip. Verify visible fields still update promptly and show No signal/Offline after status loss.
+
+## GPS forwarding (experimental)
 
 Open Crow Camera, connect to a recognized camera, then turn on **Forward GPS to camera**. Grant precise Location permission and allow notifications when prompted. Enable GPS on the Karoo and wait outdoors for a good fix. Forwarding is off by default; it does not restart itself after an app/process or device restart. On a phone, it uses that phone's GPS, not the Karoo's.
 
@@ -44,7 +62,7 @@ A user-started Android location foreground service keeps receiving measured GPS 
 
 The current Karoo extension location event exposes coordinates and heading but not the full timestamp/accuracy/altitude/satellite fields DJI requires. Crow therefore uses Android's **GPS provider on the Karoo itself**, sharing the device GNSS receiver rather than injecting incomplete SDK events. It waits for measured altitude, speed, horizontal/vertical/speed accuracy and at least four satellites used in a fresh fix. It derives north/east velocity from measured speed and bearing, and downward velocity from successive measured altitudes. Missing or poor data is not replaced with made-up precision or satellite counts. If Karoo's provider omits required measurements, the status explains the wait and no GPS packet is sent.
 
-DJI command **0017** carries a 48-byte little-endian payload: date/time, E7 coordinates, millimetre altitude and accuracy, centimetre/second velocity and speed accuracy, and satellite count. Protocol time is UTC+8 with date rollover normalized, independent of the rider's timezone. The source GPS fix supplies its timestamp. New fixes are requested up to 10 Hz; actual rate depends on Karoo hardware. Duplicate, stale, too-fast, mock, invalid, and inaccurate fixes are rejected; two fresh fixes are needed after a gap to derive vertical velocity. No GPS is sent while the camera reports sleep.
+DJI command **0017** carries a 48-byte little-endian payload: date/time, E7 coordinates, millimetre altitude and accuracy, centimetre/second velocity and speed accuracy, and satellite count. Protocol time is UTC+8 with date rollover normalized, independent of the rider's timezone. The source GPS fix supplies its timestamp. New fixes are requested and forwarded at no more than 1 Hz; actual rate depends on Karoo hardware. Duplicate, stale, too-fast, mock, invalid, and inaccurate fixes are rejected; two fresh fixes are needed after a gap to derive vertical velocity. No GPS is sent while the camera reports sleep.
 
 Telemetry uses the existing serialized GATT writer, only when no camera command/write is pending. It drops samples instead of delaying controls or replaying old positions. A GPS frame has four 20-byte-or-smaller ATT fragments. **GPS packets sent to camera** means those writes completed; it does not prove the camera stored telemetry or that Mimo supports every overlay. No pixels, captions, speedometer, or map are burned into the video by Crow.
 

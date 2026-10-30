@@ -15,6 +15,7 @@ import io.hammerhead.karooext.internal.ViewEmitter
 import io.hammerhead.karooext.models.ViewConfig
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
@@ -23,14 +24,21 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import org.robolectric.shadows.ShadowLooper
+import org.robolectric.shadows.ShadowSystemClock
+import android.content.BroadcastReceiver
+import android.content.Intent
 import java.util.concurrent.TimeUnit
 import org.xmlpull.v1.XmlPullParser
 import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], instrumentedPackages = ["io.hammerhead.karooext.internal"])
 @LooperMode(LooperMode.Mode.PAUSED)
 class RideExtensionTest {
+    @Before fun initializeEmitterClock() {
+        // SDK throttling uses wall time. Start beyond its initial 0 timestamp in the simulated clock.
+        ShadowSystemClock.advanceBy(1, TimeUnit.SECONDS)
+    }
     private fun field(extension: CrowExtension, id: String, preview: Boolean, config: ViewConfig = ViewConfig(30 to 15, 240 to 160, 20, preview = preview)): View {
         val app = RuntimeEnvironment.getApplication()
         val updates = mutableListOf<Bundle>()
@@ -228,10 +236,71 @@ class RideExtensionTest {
         assertFalse(view.findViewById<View>(R.id.camera_photo).isEnabled)
         assertFalse(view.findViewById<View>(R.id.camera_video).isEnabled)
         assertFalse(CameraSession.get(app).inUse())
+        val previewCount = updates.size
+        shadowOf(Looper.getMainLooper()).idleFor(4, TimeUnit.SECONDS)
+        assertEquals(previewCount, updates.size)
         emitter.cancel()
         ShadowLooper.idleMainLooper()
         val count = updates.size
         shadowOf(Looper.getMainLooper()).idleFor(2, TimeUnit.SECONDS)
         assertEquals(count, updates.size)
+    }
+
+    @Test fun unchangedFieldsDoNotResendAndChangedFieldsStillExpireWithoutStatus() {
+        val app = RuntimeEnvironment.getApplication()
+        val extension = Robolectric.buildService(CrowExtension::class.java).get()
+        val session = CameraSession.get(app)
+        val link = session.link
+        link.ready = true; link.mode = 1; link.state = 1; link.battery = 85
+        link.videoSecondsRemaining = 5070; link.statusAt = SystemClock.elapsedRealtime()
+        val emitters = mutableListOf<ViewEmitter>()
+        val updates = mutableMapOf<String, MutableList<Bundle>>()
+        try {
+            for (id in listOf("camera-battery", "camera-video-left", "camera-record")) {
+                val values = mutableListOf<Bundle>(); updates[id] = values
+                val emitter = ViewEmitter(app.packageName, object : IHandler.Stub() {
+                    override fun onNext(bundle: Bundle) { if (bundle.containsKey("view")) values.add(bundle) }
+                    override fun onError(message: String) { fail(message) }
+                    override fun onComplete() = Unit
+                })
+                emitters.add(emitter)
+                extension.types.single { it.typeId == id }.startView(app, ViewConfig(30 to 15, 240 to 160, 20, preview = false), emitter)
+            }
+            ShadowLooper.idleMainLooper()
+            assertTrue(updates.values.all { it.size == 1 })
+            link.seconds = 1; link.videoSecondsRemaining = 5069; extension.changed()
+            shadowOf(Looper.getMainLooper()).idleFor(1, TimeUnit.SECONDS)
+            assertTrue(updates.values.all { it.size == 1 })
+
+            link.state = 3; link.seconds = 2; link.statusAt = SystemClock.elapsedRealtime(); extension.changed()
+            shadowOf(Looper.getMainLooper()).idleFor(1, TimeUnit.SECONDS)
+            assertEquals(2, updates.getValue("camera-record").size)
+            assertEquals(1, updates.getValue("camera-battery").size)
+            assertEquals(1, updates.getValue("camera-video-left").size)
+
+            link.battery = 84; link.videoSecondsRemaining = 5039; link.statusAt = SystemClock.elapsedRealtime(); extension.changed()
+            shadowOf(Looper.getMainLooper()).idleFor(1, TimeUnit.SECONDS)
+            assertEquals(2, updates.getValue("camera-battery").size)
+            assertEquals(2, updates.getValue("camera-video-left").size)
+            assertEquals(2, updates.getValue("camera-record").size)
+
+            val receiverField = CrowExtension::class.java.getDeclaredField("screenReceiver").apply { isAccessible = true }
+            val screenReceiver = receiverField.get(extension) as BroadcastReceiver
+            screenReceiver.onReceive(app, Intent(Intent.ACTION_SCREEN_OFF))
+            link.battery = 83; link.statusAt = SystemClock.elapsedRealtime(); extension.changed()
+            shadowOf(Looper.getMainLooper()).idleFor(1, TimeUnit.SECONDS)
+            assertEquals(2, updates.getValue("camera-battery").size)
+            screenReceiver.onReceive(app, Intent(Intent.ACTION_SCREEN_ON))
+            ShadowLooper.idleMainLooper()
+            assertEquals(3, updates.getValue("camera-battery").size)
+
+            shadowOf(Looper.getMainLooper()).idleFor(6, TimeUnit.SECONDS)
+            assertEquals(4, updates.getValue("camera-battery").size)
+            @Suppress("DEPRECATION")
+            val last = updates.getValue("camera-battery").last().getParcelable<RemoteViews>("view")!!
+            assertEquals("Offline", last.apply(app, FrameLayout(app)).findViewById<TextView>(R.id.field_value).text.toString())
+        } finally {
+            emitters.forEach { it.cancel() }; ShadowLooper.idleMainLooper(); session.release(extension)
+        }
     }
 }

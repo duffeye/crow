@@ -12,6 +12,7 @@ import java.time.ZonedDateTime;
 final class GpsTelemetry {
     private Location previous;
     String status = "Waiting for a GPS fix";
+    void reset() { previous = null; status = "Waiting for a GPS fix"; }
     byte[] offer(Location fix, int satellites, long satellitesAtNs, long nowNs, long nowMs) {
         if (!LocationManager.GPS_PROVIDER.equals(fix.getProvider())) return reject("Waiting for GPS provider");
         if (fix.isFromMockProvider()) return reject("Mock locations are not forwarded");
@@ -28,7 +29,8 @@ final class GpsTelemetry {
             return reject("Waiting for accurate GPS");
         if (previous == null) { previous = new Location(fix); status = "Waiting for next GPS fix"; return null; }
         long deltaNs = fix.getElapsedRealtimeNanos() - previous.getElapsedRealtimeNanos();
-        if (deltaNs <= 0 || deltaNs < 100_000_000L) { status = "Waiting for a new GPS fix"; return null; }
+        // Some providers deliver faster than requested. Limit serialization and BLE traffic to 1 Hz.
+        if (deltaNs < 1_000_000_000L) { status = "Waiting for a new GPS fix"; return null; }
         if (deltaNs > 3_000_000_000L) { previous = new Location(fix); status = "Waiting for next GPS fix"; return null; }
         double down = (previous.getAltitude() - fix.getAltitude()) / (deltaNs / 1e9);
         previous = new Location(fix);

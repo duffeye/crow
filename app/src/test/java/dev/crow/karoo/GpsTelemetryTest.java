@@ -56,8 +56,18 @@ public class GpsTelemetryTest {
         assertNull(gps.offer(first, 9, 10_000_000_000L, 10_000_000_000L, UTC));
         assertNull(gps.offer(first, 9, 10_000_000_000L, 10_000_000_000L, UTC));
         assertNull(gps.offer(fix(10_050_000_000L, UTC + 50, 100), 9, 10_050_000_000L, 10_050_000_000L, UTC + 50));
+        assertNull(gps.offer(fix(10_900_000_000L, UTC + 900, 100), 9, 10_900_000_000L, 10_900_000_000L, UTC + 900));
         assertNotNull(gps.offer(fix(11_000_000_000L, UTC + 1000, 100), 9, 11_000_000_000L, 11_000_000_000L, UTC + 1000));
         assertNull(gps.offer(fix(11_000_000_000L, UTC + 1000, 100), 9, 11_000_000_000L, 11_000_000_000L, UTC + 1000));
+    }
+    @Test public void resumingAfterPauseRequiresNewBaselineRatherThanReusingOldAltitude() {
+        GpsTelemetry gps = new GpsTelemetry();
+        gps.offer(fix(10_000_000_000L, UTC, 100), 9, 10_000_000_000L, 10_000_000_000L, UTC);
+        gps.reset();
+        assertNull(gps.offer(fix(11_000_000_000L, UTC + 1000, 99), 9, 11_000_000_000L, 11_000_000_000L, UTC + 1000));
+        byte[] payload = gps.offer(fix(12_000_000_000L, UTC + 2000, 99), 9, 12_000_000_000L, 12_000_000_000L, UTC + 2000);
+        assertNotNull(payload);
+        assertEquals(0, ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN).getFloat(28), .001);
     }
     @Test public void aGapRequiresTwoNewFixesAndStationaryZeroCoordinatesAreValid() {
         GpsTelemetry gps = new GpsTelemetry();

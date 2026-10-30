@@ -50,7 +50,7 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
             if (checked) enableGps(); else stopService(new Intent(this, GpsForwardingService.class));
         });
         gpsStatus = text(root, session.gpsStatus, 16);
-        text(root, "GPS forwarding uses this device’s GPS and sends telemetry for DJI Mimo testing. It stays active with a notification until you turn it off or tap Stop in the notification.", 14);
+        text(root, "GPS forwarding uses this device’s GPS at one update per second. It pauses GPS requests while the camera is unavailable or asleep, then resumes automatically. Turn it off here or tap Stop in the notification when finished.", 14);
         text(root, "Add Crow Camera to a Karoo ride screen for in-ride control. The enabled extension keeps the connection when you leave this app. Disconnecting never stops a camera recording.", 14);
         changed();
     }
@@ -99,20 +99,23 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
     }
     @Override public void changed() {
         if (message == null) return;
-        if (gpsStatus != null) gpsStatus.setText(session.gpsStatus);
+        if (gpsStatus != null) setTextIfChanged(gpsStatus, session.gpsStatus);
         if (gpsSwitch != null) {
             updatingGpsSwitch = true; gpsSwitch.setChecked(session.gpsRunning); updatingGpsSwitch = false;
         }
-        message.setText(link.message);
+        setTextIfChanged(message, link.message);
         boolean fresh = link.fresh();
         String state = !link.ready ? "Camera disconnected" : !fresh ? "Waiting for live status" : link.state == 3 ? "CAPTURING" : "Camera ready";
         if (link.cameraModel != null) state = link.cameraModel.displayName + (link.cameraModel.experimental ? " (experimental)" : "") + "\n" + state;
         if (fresh) state += String.format(Locale.ROOT, "\n%s • Battery %s\n%02d:%02d", modeName(link.mode), link.battery < 0 ? "—" : link.battery + "%", link.seconds / 60, link.seconds % 60);
-        status.setText(state); status.setTextColor(fresh && link.state == 3 ? Color.rgb(255, 100, 100) : Color.WHITE);
-        shutter.setText(CameraControls.shutterLabel(link.mode, link.state));
+        setTextIfChanged(status, state); status.setTextColor(fresh && link.state == 3 ? Color.rgb(255, 100, 100) : Color.WHITE);
+        setTextIfChanged(shutter, CameraControls.shutterLabel(link.mode, link.state));
         shutter.setEnabled(CameraControls.canShutter(fresh, link.busy, link.mode, link.state));
         photoMode.setEnabled(CameraControls.canSwitchMode(fresh, link.busy, link.state) && link.mode != 5);
         videoMode.setEnabled(CameraControls.canSwitchMode(fresh, link.busy, link.state) && link.mode != 1);
+    }
+    private void setTextIfChanged(TextView view, String text) {
+        if (!android.text.TextUtils.equals(view.getText(), text)) view.setText(text);
     }
     private String modeName(int mode) {
         switch (mode) { case 1: return "Video"; case 5: return "Photo"; case 0: return "Slow motion"; case 2: return "Timelapse"; case 10: return "Hyperlapse"; default: return "Mode " + mode; }

@@ -20,7 +20,7 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
     private LocationManager locations;
     private int satellites;
     private long satellitesAt, fixAt;
-    private boolean registered;
+    private boolean started, registered, stopping;
     private String lastNotification;
     private final GnssStatus.Callback satelliteCallback = new GnssStatus.Callback() {
         @Override public void onSatelliteStatusChanged(GnssStatus status) {
@@ -45,29 +45,53 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
         try {
             if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, notification("Waiting for GPS"), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
             else startForeground(NOTIFICATION, notification("Waiting for GPS"));
-            if (!registered) {
+            if (!started) {
+                started = true;
                 session.gpsRunning = true; session.acquire(this); session.reconnectIfAllowed();
                 if (locations == null || !locations.getAllProviders().contains(LocationManager.GPS_PROVIDER)) {
                     session.gpsStatus = "GPS provider unavailable on this device"; stopSelf(); return START_NOT_STICKY;
                 }
-                if (!locations.registerGnssStatusCallback(satelliteCallback, main)) {
-                    session.gpsStatus = "Cannot receive GPS satellite status"; stopSelf(); return START_NOT_STICKY;
-                }
-                locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 0, this, Looper.getMainLooper());
-                registered = true; main.post(tick);
+                updateGpsSubscription(); if (!stopping) main.post(tick);
             }
         } catch (RuntimeException e) { session.gpsStatus = "GPS stopped: " + e.getClass().getSimpleName(); stopSelf(); }
         return START_NOT_STICKY;
     }
     @Override public void onLocationChanged(Location fix) {
-        if (!session.gpsRunning) return;
+        if (!registered || !session.gpsRunning || !session.link.fresh() || session.link.powerMode != 0) return;
         byte[] payload = telemetry.offer(fix, satellites, satellitesAt, SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis());
         fixAt = SystemClock.elapsedRealtime();
         if (payload != null) session.link.sendGps(payload); // Drop rather than queue behind camera commands.
     }
+    /** Keep the user-enabled service, but release Crow's GNSS demand when packets cannot be used. */
+    private void updateGpsSubscription() {
+        boolean needed = session.gpsRunning && session.link.fresh() && session.link.powerMode == 0
+            && locations != null && locations.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        if (needed == registered) return;
+        if (!needed) { pauseGps(); return; }
+        try {
+            if (!locations.registerGnssStatusCallback(satelliteCallback, main)) {
+                session.gpsStatus = "Cannot receive GPS satellite status"; stopping = true; stopSelf(); return;
+            }
+            locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, this, Looper.getMainLooper());
+            registered = true;
+        } catch (RuntimeException e) {
+            pauseGps(); session.gpsStatus = "GPS stopped: " + e.getClass().getSimpleName(); stopping = true; stopSelf();
+        }
+    }
+    private void pauseGps() {
+        registered = false;
+        if (locations != null) {
+            try { locations.removeUpdates(this); locations.unregisterGnssStatusCallback(satelliteCallback); }
+            catch (SecurityException ignored) { /* Permission can be revoked while subscribed. */ }
+        }
+        satellites = 0; satellitesAt = 0; fixAt = 0;
+        telemetry.reset();
+    }
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!allowed()) { session.gpsStatus = "GPS stopped: permission removed"; stopSelf(); return; }
+            updateGpsSubscription();
+            if (stopping) return;
             String text;
             if (!locations.isProviderEnabled(LocationManager.GPS_PROVIDER)) text = "Enable GPS on this device";
             else if (!session.link.fresh()) text = "GPS waiting for camera connection";
@@ -77,7 +101,7 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
             else text = telemetry.status;
             session.gpsStatus = text;
             if (!text.equals(lastNotification)) { getSystemService(NotificationManager.class).notify(NOTIFICATION, notification(text)); lastNotification = text; }
-            main.postDelayed(this, 1000);
+            main.postDelayed(this, registered ? 1000 : 5000);
         }
     };
     private Notification notification(String text) {
@@ -89,10 +113,7 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
     }
     @Override public void onDestroy() {
         main.removeCallbacks(tick);
-        if (locations != null) {
-            try { locations.removeUpdates(this); locations.unregisterGnssStatusCallback(satelliteCallback); }
-            catch (SecurityException ignored) { /* Permission may have been revoked while forwarding. */ }
-        }
+        pauseGps();
         session.gpsRunning = false;
         if (!session.gpsStatus.startsWith("GPS stopped:") && !session.gpsStatus.contains("unavailable") && !session.gpsStatus.startsWith("Cannot")) session.gpsStatus = "GPS forwarding off";
         session.release(this);
@@ -103,6 +124,12 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
     @Override public void onProviderDisabled(String provider) { satellites = 0; satellitesAt = 0; }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
-    @Override public void changed() { }
+    @Override public void changed() {
+        if (started && !stopping && session.gpsRunning && allowed()) {
+            boolean wasRegistered = registered;
+            updateGpsSubscription();
+            if (!stopping && wasRegistered != registered) { main.removeCallbacks(tick); main.post(tick); }
+        }
+    }
     @Override public void found(BluetoothDevice device, String name) { }
 }

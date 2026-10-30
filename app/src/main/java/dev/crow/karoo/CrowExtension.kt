@@ -4,10 +4,15 @@ import android.app.PendingIntent
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.os.PowerManager
+import android.os.Build
 import android.view.View
 import android.view.Gravity
 import android.util.TypedValue
@@ -24,9 +29,40 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Karoo keeps this service bound while the extension is enabled. It owns one shared BLE session. */
-class CrowExtension : KarooExtension("crow", "11"), CameraLink.Listener {
+class CrowExtension : KarooExtension("crow", "12"), CameraLink.Listener {
     private val main = Handler(Looper.getMainLooper())
-    private val timers = mutableSetOf<Runnable>()
+    private val views = mutableSetOf<Runnable>()
+    private var refreshPending = false
+    private var lastRefreshAt = -1000L
+    private var screenVisible = true
+    private var screenReceiverRegistered = false
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    screenVisible = false
+                    main.removeCallbacks(refresh); refreshPending = false
+                }
+                Intent.ACTION_SCREEN_ON -> { screenVisible = true; scheduleRefresh() }
+            }
+        }
+    }
+    private val refresh = object : Runnable {
+        override fun run() {
+            refreshPending = false
+            if (destroyed || !screenVisible || views.isEmpty()) return
+            lastRefreshAt = SystemClock.elapsedRealtime()
+            views.toList().forEach { it.run() }
+            // One shared freshness watchdog; disconnected and preview fields need no recurring timer.
+            if (session.link.fresh()) scheduleRefresh()
+        }
+    }
+
+    private fun scheduleRefresh() {
+        if (destroyed || !screenVisible || views.isEmpty() || refreshPending) return
+        refreshPending = true
+        main.postDelayed(refresh, (lastRefreshAt + 1000 - SystemClock.elapsedRealtime()).coerceAtLeast(0))
+    }
     private val session by lazy { CameraSession.get(this) }
     private val karoo by lazy { KarooSystemService(this) }
     private var active = false
@@ -38,16 +74,27 @@ class CrowExtension : KarooExtension("crow", "11"), CameraLink.Listener {
     override val types = listOf("camera", "camera-record", "camera-photo", "camera-status", "camera-mode", "camera-battery", "camera-video-left", "camera-photos-left").map { fieldId -> object : DataTypeImpl("crow", fieldId) {
         override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
             val cancelled = AtomicBoolean(false)
+            var previousKey: List<Any?>? = null
+            var lastEmissionAt = -1000L
             val tick = object : Runnable {
                 override fun run() {
                     if (cancelled.get() || destroyed) return
-                    emitter.updateView(if (fieldId == "camera") render(context, config) else renderSeparate(context, config, fieldId))
-                    main.postDelayed(this, 1000)
+                    if (!config.preview && !screenVisible) return
+                    val key = viewKey(fieldId, config)
+                    val now = SystemClock.elapsedRealtime()
+                    if (key != previousKey && now - lastEmissionAt >= 1000) {
+                        emitter.updateView(if (fieldId == "camera") render(context, config) else renderSeparate(context, config, fieldId))
+                        previousKey = key
+                        lastEmissionAt = now
+                    }
                 }
             }
             emitter.setCancellable {
                 cancelled.set(true)
-                main.post { main.removeCallbacks(tick); timers.remove(tick) }
+                main.post {
+                    views.remove(tick)
+                    if (views.isEmpty()) { main.removeCallbacks(refresh); refreshPending = false }
+                }
             }
             main.post {
                 if (!cancelled.get() && !destroyed) {
@@ -55,15 +102,38 @@ class CrowExtension : KarooExtension("crow", "11"), CameraLink.Listener {
                     if (!config.preview) ensureSession()
                     // Action tiles draw their header inside the same click target; host headers cannot receive our clicks.
                     emitter.onNext(UpdateGraphicConfig(showHeader = !isActionField(fieldId)))
-                    timers.add(tick)
                     tick.run()
+                    if (!config.preview) {
+                        views.add(tick)
+                        if (session.link.fresh()) scheduleRefresh()
+                    }
                 }
             }
         }
     } }
 
+    /** Compare only inputs that affect this field before allocating or sending RemoteViews. */
+    private fun viewKey(fieldId: String, config: ViewConfig): List<Any?> {
+        if (config.preview) return listOf("preview")
+        val link = session.link
+        if (!link.fresh()) return listOf(false, link.ready, if (fieldId == "camera") link.message else null)
+        return when (fieldId) {
+            "camera-battery" -> listOf(true, link.battery)
+            "camera-video-left" -> listOf(true, if (link.videoSecondsRemaining < 0) -1 else link.videoSecondsRemaining / 60)
+            "camera-photos-left" -> listOf(true, link.photosRemaining)
+            "camera-photo", "camera-mode" -> listOf(true, link.mode, link.state, link.busy)
+            "camera-record" -> listOf(true, link.mode, link.state, link.busy, if (link.mode == 1 && link.state == 3) link.seconds else 0)
+            else -> listOf(true, link.mode, link.state, link.busy, link.battery, if (link.mode == 1 && link.state == 3) link.seconds else 0)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        screenVisible = getSystemService(PowerManager::class.java).isInteractive
+        val screenFilter = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) }
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, screenFilter, Context.RECEIVER_NOT_EXPORTED)
+        else registerReceiver(screenReceiver, screenFilter)
+        screenReceiverRegistered = true
         karoo.connect { isConnected ->
             main.post {
                 if (!destroyed) {
@@ -283,13 +353,15 @@ class CrowExtension : KarooExtension("crow", "11"), CameraLink.Listener {
         return view
     }
 
-    override fun changed() = Unit // Each active view refreshes at the SDK's supported 1 Hz.
+    override fun changed() { scheduleRefresh() } // Coalesce status callbacks to the SDK's supported 1 Hz.
     override fun found(device: BluetoothDevice, name: String) = Unit
 
     override fun onDestroy() {
         destroyed = true
-        timers.forEach { main.removeCallbacks(it) }
-        timers.clear()
+        if (screenReceiverRegistered) { unregisterReceiver(screenReceiver); screenReceiverRegistered = false }
+        main.removeCallbacks(refresh)
+        refreshPending = false
+        views.clear()
         if (active) {
             if (connected) karoo.dispatch(ReleaseBluetooth("crow-camera"))
             session.release(this)

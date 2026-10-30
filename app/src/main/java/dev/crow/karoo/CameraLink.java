@@ -28,6 +28,7 @@ final class CameraLink {
     private int sequence, pendingSeq = -1;
     private int pendingSet, pendingId, targetMode = -1;
     private boolean writing, scanning;
+    private final Set<String> scanResults = new HashSet<>();
     private boolean reconnecting;
     private Runnable writeTimeout, commandTimeout, connectTimeout;
     String message = "Turn on your DJI Osmo Action camera, then find it below.";
@@ -65,8 +66,13 @@ final class CameraLink {
         close();
         if (adapter == null || !adapter.isEnabled()) { report("Enable Bluetooth in Karoo settings first."); return; }
         scanning = true;
+        scanResults.clear();
         try {
-            adapter.getBluetoothLeScanner().startScan(scanCallback);
+            // Let Android/controller filter unrelated advertisements before waking this process.
+            ScanFilter filter = new ScanFilter.Builder().setManufacturerData(0x08aa,
+                new byte[]{0, 0, (byte) 0xfa}, new byte[]{0, 0, (byte) 0xff}).build();
+            ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build();
+            adapter.getBluetoothLeScanner().startScan(Collections.singletonList(filter), settings, scanCallback);
             report("Searching for DJI cameras…");
             handler.postDelayed(stopScan, 12000);
         } catch (RuntimeException e) { fail("Bluetooth scan failed: " + e.getMessage()); }
@@ -90,7 +96,10 @@ final class CameraLink {
             byte[] data = record.getManufacturerSpecificData(0x08aa);
             if (data == null || data.length < 3 || (data[2] & 255) != 0xfa) return;
             String name = record.getDeviceName();
-            handler.post(() -> { if (scanning) listener.found(result.getDevice(), name == null ? "DJI camera" : name); });
+            handler.post(() -> {
+                if (scanning && scanResults.add(result.getDevice().getAddress()))
+                    listener.found(result.getDevice(), name == null ? "DJI camera" : name);
+            });
         }
     };
     void connect(BluetoothDevice device) {
@@ -218,6 +227,8 @@ final class CameraLink {
                 byte[] ack = new byte[9]; Protocol.put(ack, 0, 0x12345678, 4);
                 send(0x20, f.seq, 0, 0x19, ack);
                 ready = true; cancel(connectTimeout);
+                // Advisory only: camera/Android may retain their own connection interval.
+                if (gatt != null) gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER);
                 send(0, ++sequence, 0x1d, 5, new byte[]{3, 20, 0, 0, 0, 0});
                 report(detected.displayName + (detected.experimental ? " — experimental support; test controls before riding." : ".") + " Waiting for camera status…");
             }
