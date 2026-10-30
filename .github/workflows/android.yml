@@ -1,12 +1,15 @@
 name: Android checks
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/v*']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: crow-android
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,29 +26,58 @@ jobs:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+      - name: Report test failures
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          def escape(value):
+              return value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          for report in pathlib.Path('app/build/test-results').rglob('TEST-*.xml'):
+              for test in ET.parse(report).iter('testcase'):
+                  for error in list(test.findall('failure')) + list(test.findall('error')):
+                      detail = '\n'.join((error.text or error.get('message', '')).splitlines()[:35])
+                      print('::error::' + escape(test.get('classname', '') + '.' + test.get('name', '') + '\n' + detail))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-failure-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-*
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: crow-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: crow-debug-apk
           path: release-apk
       - name: Prepare versioned APK and checksum
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          RELEASE_TAG="${RELEASE_REF#release/}"
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          # A retry branch may adjust CI, but must build the exact tagged app, tests and toolchain.
+          git diff --exit-code "$RELEASE_TAG" HEAD -- app third_party gradle gradlew gradlew.bat gradle.properties settings.gradle build.gradle
+          printf 'RELEASE_TAG=%s\n' "$RELEASE_TAG" >> "$GITHUB_ENV"
           export RELEASE_VERSION="${RELEASE_TAG#v}"
           python3 - <<'PY'
           import os, pathlib, re
@@ -62,7 +94,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           gh release create "$RELEASE_TAG" \
             "release-apk/crow-$RELEASE_TAG.apk" release-apk/SHA256SUMS.txt \

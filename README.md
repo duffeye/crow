@@ -8,6 +8,8 @@ Download the `.apk` attachment from [GitHub Releases](https://github.com/duffeye
 
 Maintainers: pushing a `vX.Y.Z` tag runs the Android checks and, after they pass, publishes a pre-release with the versioned APK and SHA-256 checksum. The tag must match `versionName` in `app/build.gradle`, and `release-notes/vX.Y.Z.md` must exist. Publication uses GitHub Actions' repository token; no additional secret is required.
 
+Builds run one at a time. Failed tests produce workflow annotations and downloadable reports. To retry an unpublished release after a CI-only change, push a `release/vX.Y.Z` branch. Its app, tests, SDK source and Gradle toolchain must match the existing version tag; the workflow checks this before publishing, so a retry does not move the tag or silently replace app code.
+
 ## Camera compatibility (0.8.0)
 
 | Camera | Crow support |
