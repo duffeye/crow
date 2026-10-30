@@ -50,7 +50,7 @@ public final class MainActivity extends Activity implements CameraLink.Listener 
             if (checked) enableGps(); else stopService(new Intent(this, GpsForwardingService.class));
         });
         gpsStatus = text(root, session.gpsStatus, 16);
-        text(root, "GPS forwarding uses this device’s GPS at one update per second. It pauses GPS requests while the camera is unavailable or asleep, then resumes automatically. Turn it off here or tap Stop in the notification when finished.", 14);
+        text(root, "GPS forwarding requests up to 10 updates per second and uses faster Bluetooth while active. Actual speed depends on this device and camera; the status shows measured fix and send rates. GPS requests pause while the camera is unavailable or asleep. Turn forwarding off here or tap Stop in the notification when finished.", 14);
         text(root, "Add Crow Camera to a Karoo ride screen for in-ride control. The enabled extension keeps the connection when you leave this app. Disconnecting never stops a camera recording.", 14);
         changed();
     }

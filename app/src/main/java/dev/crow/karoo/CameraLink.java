@@ -38,6 +38,9 @@ final class CameraLink {
     long videoSecondsRemaining = -1, photosRemaining = -1;
     int powerMode = -1;
     private int gpsFragments;
+    private boolean gpsStreaming;
+    private int requestedPriority = -1;
+    final SampleRate gpsWriteRate = new SampleRate();
     long lastGpsWriteAt;
     long statusAt;
 
@@ -114,6 +117,7 @@ final class CameraLink {
     }
     private void cancel(Runnable task) { if (task != null) handler.removeCallbacks(task); }
     void close() {
+        gpsStreaming = false; requestedPriority = -1; gpsWriteRate.clear();
         cameraModel = null;
         powerMode = -1; gpsFragments = 0; lastGpsWriteAt = 0;
         capturePlan.cancel();
@@ -173,7 +177,10 @@ final class CameraLink {
                 cancel(writeTimeout);
                 if (status != 0) { fail("Bluetooth write failed (" + status + "). Check camera state before retrying."); return; }
                 writes.poll(); writing = false;
-                if (gpsFragments > 0 && --gpsFragments == 0) lastGpsWriteAt = android.os.SystemClock.elapsedRealtime();
+                if (gpsFragments > 0 && --gpsFragments == 0) {
+                    lastGpsWriteAt = android.os.SystemClock.elapsedRealtime();
+                    gpsWriteRate.record(android.os.SystemClock.elapsedRealtimeNanos());
+                }
                 pump();
             });
         }
@@ -202,6 +209,21 @@ final class CameraLink {
         send(0, ++sequence, 0, 0x17, payload);
         return gpsFragments > 0;
     }
+    void setGpsStreaming(boolean active) {
+        if (gpsStreaming == active) return;
+        gpsStreaming = active;
+        updateConnectionPriority();
+    }
+    private void updateConnectionPriority() {
+        int priority = gpsStreaming ? BluetoothGatt.CONNECTION_PRIORITY_HIGH : BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER;
+        // Advisory only. Do not repeatedly negotiate on every GPS/status packet.
+        if (!ready || gatt == null || requestedPriority == priority) return;
+        try {
+            if (gatt.requestConnectionPriority(priority)) requestedPriority = priority;
+        } catch (SecurityException ignored) {
+            // GPS shutdown must still release location/owners if Bluetooth permission was revoked.
+        }
+    }
     private void pump() {
         if (writing || writes.isEmpty() || gatt == null || tx == null) return;
         writing = true; tx.setValue(writes.peek());
@@ -227,8 +249,7 @@ final class CameraLink {
                 byte[] ack = new byte[9]; Protocol.put(ack, 0, 0x12345678, 4);
                 send(0x20, f.seq, 0, 0x19, ack);
                 ready = true; cancel(connectTimeout);
-                // Advisory only: camera/Android may retain their own connection interval.
-                if (gatt != null) gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER);
+                updateConnectionPriority();
                 send(0, ++sequence, 0x1d, 5, new byte[]{3, 20, 0, 0, 0, 0});
                 report(detected.displayName + (detected.experimental ? " — experimental support; test controls before riding." : ".") + " Waiting for camera status…");
             }

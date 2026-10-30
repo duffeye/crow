@@ -4,6 +4,8 @@ import android.Manifest;
 import android.content.Intent;
 import android.app.Service;
 import android.location.LocationManager;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothGatt;
 import android.os.Looper;
 import android.os.SystemClock;
 import java.util.concurrent.TimeUnit;
@@ -14,6 +16,8 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.shadows.ShadowBluetoothGatt;
+import org.robolectric.util.ReflectionHelpers;
 import static org.robolectric.Shadows.shadowOf;
 import static org.junit.Assert.*;
 
@@ -33,7 +37,7 @@ public class GpsServiceTest {
         assertTrue(shadowOf(service).isStoppedBySelf());
         controller.destroy();
     }
-    @Test public void gpsDemandPausesForUnavailableCameraAndResumesAtOneHz() {
+    @Test public void gpsDemandUsesFastBluetoothAndTenHzOnlyWhileCameraIsAvailable() {
         var app = RuntimeEnvironment.getApplication();
         shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT);
         var locations = app.getSystemService(LocationManager.class);
@@ -49,12 +53,16 @@ public class GpsServiceTest {
             assertTrue(gps.getLocationRequests(LocationManager.GPS_PROVIDER).isEmpty());
             assertTrue(session.gpsStatus.contains("waiting for camera"));
 
+            var device = app.getSystemService(BluetoothManager.class).getAdapter().getRemoteDevice("02:00:00:00:00:01");
+            var gatt = ShadowBluetoothGatt.newInstance(device);
+            ReflectionHelpers.setField(session.link, "gatt", gatt);
             session.link.ready = true; session.link.powerMode = 0;
             session.link.statusAt = SystemClock.elapsedRealtime();
             service.changed();
             shadowOf(Looper.getMainLooper()).idle();
             assertEquals(1, gps.getLocationRequests(LocationManager.GPS_PROVIDER).size());
-            assertEquals(1000, gps.getLocationRequests(LocationManager.GPS_PROVIDER).get(0).getIntervalMillis());
+            assertEquals(100, gps.getLocationRequests(LocationManager.GPS_PROVIDER).get(0).getIntervalMillis());
+            assertEquals(BluetoothGatt.CONNECTION_PRIORITY_HIGH, shadowOf(gatt).getConnectionPriority());
             service.changed(); // Repeated status packets must not add location subscriptions.
             assertEquals(1, gps.getLocationRequests(LocationManager.GPS_PROVIDER).size());
 
@@ -62,13 +70,16 @@ public class GpsServiceTest {
             shadowOf(Looper.getMainLooper()).idle();
             assertTrue(gps.getLocationRequests(LocationManager.GPS_PROVIDER).isEmpty());
             assertTrue(session.gpsStatus.contains("asleep"));
+            assertEquals(BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER, shadowOf(gatt).getConnectionPriority());
 
             session.link.powerMode = 0; service.changed();
             assertEquals(1, gps.getLocationRequests(LocationManager.GPS_PROVIDER).size());
+            assertEquals(BluetoothGatt.CONNECTION_PRIORITY_HIGH, shadowOf(gatt).getConnectionPriority());
             // Freshness watchdog releases GPS even without a disconnect callback.
             shadowOf(Looper.getMainLooper()).idleFor(6, TimeUnit.SECONDS);
             assertTrue(gps.getLocationRequests(LocationManager.GPS_PROVIDER).isEmpty());
             assertTrue(session.gpsRunning); // Enabled, paused; no unsolicited restart/pairing.
+            assertEquals(BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER, shadowOf(gatt).getConnectionPriority());
 
             session.link.statusAt = SystemClock.elapsedRealtime(); service.changed();
             assertEquals(1, gps.getLocationRequests(LocationManager.GPS_PROVIDER).size());

@@ -17,7 +17,7 @@ final class GpsTelemetry {
         if (!LocationManager.GPS_PROVIDER.equals(fix.getProvider())) return reject("Waiting for GPS provider");
         if (fix.isFromMockProvider()) return reject("Mock locations are not forwarded");
         long age = nowNs - fix.getElapsedRealtimeNanos();
-        if (age < 0 || age > 3_000_000_000L || Math.abs(nowMs - fix.getTime()) > 5000)
+        if (age < 0 || age > 1_000_000_000L || Math.abs(nowMs - fix.getTime()) > 5000)
             return reject("Waiting for a fresh GPS fix");
         if (satellites < 4 || nowNs < satellitesAtNs || nowNs - satellitesAtNs > 5_000_000_000L)
             return reject("Waiting for satellite fix");
@@ -29,8 +29,8 @@ final class GpsTelemetry {
             return reject("Waiting for accurate GPS");
         if (previous == null) { previous = new Location(fix); status = "Waiting for next GPS fix"; return null; }
         long deltaNs = fix.getElapsedRealtimeNanos() - previous.getElapsedRealtimeNanos();
-        // Some providers deliver faster than requested. Limit serialization and BLE traffic to 1 Hz.
-        if (deltaNs < 1_000_000_000L) { status = "Waiting for a new GPS fix"; return null; }
+        // Use genuinely new fixes at up to 10 Hz. Never replay a 1 Hz fix to manufacture 10 Hz.
+        if (deltaNs < 100_000_000L) { status = "Waiting for a new GPS fix"; return null; }
         if (deltaNs > 3_000_000_000L) { previous = new Location(fix); status = "Waiting for next GPS fix"; return null; }
         double down = (previous.getAltitude() - fix.getAltitude()) / (deltaNs / 1e9);
         previous = new Location(fix);

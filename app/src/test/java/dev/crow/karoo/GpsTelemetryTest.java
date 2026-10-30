@@ -56,9 +56,31 @@ public class GpsTelemetryTest {
         assertNull(gps.offer(first, 9, 10_000_000_000L, 10_000_000_000L, UTC));
         assertNull(gps.offer(first, 9, 10_000_000_000L, 10_000_000_000L, UTC));
         assertNull(gps.offer(fix(10_050_000_000L, UTC + 50, 100), 9, 10_050_000_000L, 10_050_000_000L, UTC + 50));
-        assertNull(gps.offer(fix(10_900_000_000L, UTC + 900, 100), 9, 10_900_000_000L, 10_900_000_000L, UTC + 900));
+        assertNull(gps.offer(fix(10_099_999_999L, UTC + 99, 100), 9, 10_099_999_999L, 10_099_999_999L, UTC + 99));
+        assertNotNull(gps.offer(fix(10_100_000_000L, UTC + 100, 100), 9, 10_100_000_000L, 10_100_000_000L, UTC + 100));
+        assertNull(gps.offer(fix(10_100_000_000L, UTC + 100, 100), 9, 10_100_000_000L, 10_100_000_000L, UTC + 100));
+        assertNotNull(gps.offer(fix(10_200_000_000L, UTC + 200, 100), 9, 10_200_000_000L, 10_200_000_000L, UTC + 200));
         assertNotNull(gps.offer(fix(11_000_000_000L, UTC + 1000, 100), 9, 11_000_000_000L, 11_000_000_000L, UTC + 1000));
         assertNull(gps.offer(fix(11_000_000_000L, UTC + 1000, 100), 9, 11_000_000_000L, 11_000_000_000L, UTC + 1000));
+    }
+    @Test public void fastProviderDeliversTenRealSamplesPerSecondWithoutReplayingFixes() {
+        GpsTelemetry gps = new GpsTelemetry();
+        int packets = 0;
+        for (int ms = 0; ms <= 1000; ms += 10) {
+            long time = 10_000_000_000L + ms * 1_000_000L;
+            byte[] payload = gps.offer(fix(time, UTC + ms, 100), 9, time, time, UTC + ms);
+            if (payload != null) packets++;
+        }
+        assertEquals(10, packets);
+    }
+    @Test public void dropsDelayedLocationsRatherThanSendingLaggingOverlayPositions() {
+        GpsTelemetry gps = new GpsTelemetry();
+        gps.offer(fix(10_000_000_000L, UTC, 100), 9, 10_000_000_000L, 10_000_000_000L, UTC);
+        assertNull(gps.offer(fix(10_100_000_000L, UTC + 100, 100), 9, 11_200_000_000L, 11_200_000_000L, UTC + 1200));
+        assertEquals("Waiting for a fresh GPS fix", gps.status);
+        // A new baseline is required after the stale sample; old altitude is not reused.
+        assertNull(gps.offer(fix(11_200_000_000L, UTC + 1200, 100), 9, 11_200_000_000L, 11_200_000_000L, UTC + 1200));
+        assertNotNull(gps.offer(fix(11_300_000_000L, UTC + 1300, 100), 9, 11_300_000_000L, 11_300_000_000L, UTC + 1300));
     }
     @Test public void resumingAfterPauseRequiresNewBaselineRatherThanReusingOldAltitude() {
         GpsTelemetry gps = new GpsTelemetry();

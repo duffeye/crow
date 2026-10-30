@@ -16,6 +16,7 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
     private static final int NOTIFICATION = 17;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final GpsTelemetry telemetry = new GpsTelemetry();
+    private final SampleRate fixRate = new SampleRate();
     private CameraSession session;
     private LocationManager locations;
     private int satellites;
@@ -60,7 +61,10 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
         if (!registered || !session.gpsRunning || !session.link.fresh() || session.link.powerMode != 0) return;
         byte[] payload = telemetry.offer(fix, satellites, satellitesAt, SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis());
         fixAt = SystemClock.elapsedRealtime();
-        if (payload != null) session.link.sendGps(payload); // Drop rather than queue behind camera commands.
+        if (payload != null) {
+            fixRate.record(fix.getElapsedRealtimeNanos());
+            session.link.sendGps(payload); // Drop rather than queue behind camera commands.
+        }
     }
     /** Keep the user-enabled service, but release Crow's GNSS demand when packets cannot be used. */
     private void updateGpsSubscription() {
@@ -72,20 +76,22 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
             if (!locations.registerGnssStatusCallback(satelliteCallback, main)) {
                 session.gpsStatus = "Cannot receive GPS satellite status"; stopping = true; stopSelf(); return;
             }
-            locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, this, Looper.getMainLooper());
+            locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 0, this, Looper.getMainLooper());
             registered = true;
+            session.link.setGpsStreaming(true);
         } catch (RuntimeException e) {
             pauseGps(); session.gpsStatus = "GPS stopped: " + e.getClass().getSimpleName(); stopping = true; stopSelf();
         }
     }
     private void pauseGps() {
         registered = false;
+        session.link.setGpsStreaming(false);
         if (locations != null) {
             try { locations.removeUpdates(this); locations.unregisterGnssStatusCallback(satelliteCallback); }
             catch (SecurityException ignored) { /* Permission can be revoked while subscribed. */ }
         }
         satellites = 0; satellitesAt = 0; fixAt = 0;
-        telemetry.reset();
+        telemetry.reset(); fixRate.clear();
     }
     private final Runnable tick = new Runnable() {
         @Override public void run() {
@@ -97,7 +103,10 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
             else if (!session.link.fresh()) text = "GPS waiting for camera connection";
             else if (session.link.powerMode != 0) text = "GPS paused: camera asleep";
             else if (fixAt == 0 || SystemClock.elapsedRealtime() - fixAt > 3000) text = "Waiting for a fresh GPS fix";
-            else if (session.link.lastGpsWriteAt > 0 && SystemClock.elapsedRealtime() - session.link.lastGpsWriteAt < 3000) text = "GPS packets sent to camera";
+            else if (session.link.lastGpsWriteAt > 0 && SystemClock.elapsedRealtime() - session.link.lastGpsWriteAt < 3000) {
+                long now = SystemClock.elapsedRealtimeNanos();
+                text = "GPS sent • fixes " + fixRate.display(now) + " Hz / BLE " + session.link.gpsWriteRate.display(now) + " Hz";
+            }
             else text = telemetry.status;
             session.gpsStatus = text;
             if (!text.equals(lastNotification)) { getSystemService(NotificationManager.class).notify(NOTIFICATION, notification(text)); lastNotification = text; }
