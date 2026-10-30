@@ -29,7 +29,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Karoo keeps this service bound while the extension is enabled. It owns one shared BLE session. */
-class CrowExtension : KarooExtension("crow", "13"), CameraLink.Listener {
+class CrowExtension : KarooExtension("crow", "14"), CameraLink.Listener {
     private val main = Handler(Looper.getMainLooper())
     private val views = mutableSetOf<Runnable>()
     private var refreshPending = false

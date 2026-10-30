@@ -116,7 +116,7 @@ public final class GpsForwardingService extends Service implements CameraLink.Li
     private Notification notification(String text) {
         PendingIntent open = PendingIntent.getActivity(this, 17, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getService(this, 18, new Intent(this, GpsForwardingService.class).setAction("stop"), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_camera_field).setContentTitle("Crow GPS forwarding")
+        return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_crow).setContentTitle("Crow GPS forwarding")
             .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .addAction(new Notification.Action.Builder(null, "Stop", stop).build()).build();
     }

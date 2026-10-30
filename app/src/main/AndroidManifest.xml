@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <queries><package android:name="io.hammerhead.appstore" /></queries>
-    <application android:label="Crow Camera" android:icon="@drawable/camera" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false">
+    <application android:label="Crow Camera" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false">
         <service android:name=".GpsForwardingService" android:exported="false" android:foregroundServiceType="location" />
         <service android:name=".CrowExtension" android:exported="true">
             <intent-filter><action android:name="io.hammerhead.karooext.KAROO_EXTENSION" /></intent-filter>

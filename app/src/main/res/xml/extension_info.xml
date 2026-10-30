@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ExtensionInfo id="crow" displayName="@string/extension_name" icon="@drawable/camera" scansDevices="false">
+<ExtensionInfo id="crow" displayName="@string/extension_name" icon="@drawable/crow" scansDevices="false">
     <DataType typeId="camera" displayName="@string/camera_field_name" description="@string/camera_field_description" graphical="true" icon="@drawable/ic_camera_field" />
     <DataType typeId="camera-record" displayName="@string/record_field_name" description="@string/record_field_description" graphical="true" icon="@drawable/ic_camera_field" />
     <DataType typeId="camera-photo" displayName="@string/photo_field_name" description="@string/photo_field_description" graphical="true" icon="@drawable/ic_camera_field" />
