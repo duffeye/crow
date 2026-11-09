@@ -111,11 +111,15 @@ final class CameraLink {
         report(reconnecting ? "Reconnecting to your camera…" : "Connecting… Keep the camera screen visible.");
         try {
             gatt = device.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE);
-            connectTimeout = () -> fail("Connection timed out. Wake the camera and tap Reconnect, or use Find camera.");
-            handler.postDelayed(connectTimeout, 45000);
+            connectionDeadline("Bluetooth setup timed out before code verification. Wake the camera and use Find camera.", 45000);
         } catch (RuntimeException e) { fail("Connection failed: " + e.getMessage()); }
     }
     private void cancel(Runnable task) { if (task != null) handler.removeCallbacks(task); }
+    private void connectionDeadline(String error, long delayMs) {
+        cancel(connectTimeout);
+        connectTimeout = () -> fail(error);
+        handler.postDelayed(connectTimeout, delayMs);
+    }
     void close() {
         gpsStreaming = false; requestedPriority = -1; gpsWriteRate.clear();
         cameraModel = null;
@@ -168,6 +172,7 @@ final class CameraLink {
                 } else for (int i = 0; i < 6; i++) identity[i] = (byte) Integer.parseInt(saved.substring(i * 2, i * 2 + 2), 16);
                 int code = new SecureRandom().nextInt(10000);
                 report(String.format(Locale.ROOT, reconnecting ? "Reconnecting… If the camera asks, confirm code %04d." : "Confirm code %04d on the camera.", code));
+                connectionDeadline("No final approval received from camera. If you confirmed the code, Crow did not receive a usable approval message. Use Find camera to retry.", 45000);
                 send(2, ++sequence, 0, 0x19, Protocol.pairing(identity, code, reconnecting));
             });
         }
@@ -235,8 +240,12 @@ final class CameraLink {
         byte[] p = f.payload;
         if (f.set == 0 && f.id == 0x19 && !ready) {
             if (f.response()) {
-                if (p.length < 5 || p[4] != 0) fail("Camera rejected the pairing request.");
-            } else if (p.length >= 33 && p[26] == 2) {
+                if (p.length < 5) { fail("Camera sent an incomplete pairing response."); return; }
+                if (p[4] != 0) { fail(String.format(Locale.ROOT, "Camera rejected the pairing request (0x%02X).", p[4] & 255)); return; }
+                report(message + " Request accepted; waiting for the camera's final approval…");
+            } else {
+                if (p.length < 33) { fail("Camera sent an incomplete final approval message (" + p.length + " bytes)."); return; }
+                if (p[26] != 2) { fail("Camera sent an unexpected pairing verification mode (" + (p[26] & 255) + ")."); return; }
                 if (Protocol.u16(p, 27) != 0) { fail("Pairing declined on camera."); return; }
                 // Identify from the approved protocol handshake, never a spoofable display name.
                 long deviceId = Protocol.u32(p, 0);
@@ -248,7 +257,8 @@ final class CameraLink {
                 cameraModel = detected;
                 byte[] ack = new byte[9]; Protocol.put(ack, 0, 0x12345678, 4);
                 send(0x20, f.seq, 0, 0x19, ack);
-                ready = true; cancel(connectTimeout);
+                ready = true;
+                connectionDeadline("Camera approved pairing, but no live status arrived within 15 seconds. Controls remain disabled. Use Find camera to retry.", 15000);
                 updateConnectionPriority();
                 send(0, ++sequence, 0x1d, 5, new byte[]{3, 20, 0, 0, 0, 0});
                 report(detected.displayName + (detected.experimental ? " — experimental support; test controls before riding." : ".") + " Waiting for camera status…");
@@ -257,6 +267,7 @@ final class CameraLink {
         }
         if (!ready) return;
         if (f.set == 0x1d && f.id == 2 && !f.response() && p.length >= 38) {
+            cancel(connectTimeout);
             // Remember only after approval and a valid live status, never on selection or a failed handshake.
             String address = gatt.getDevice().getAddress();
             if (!address.equals(preferences.getString("paired_address", null)))

@@ -3,6 +3,8 @@ package dev.crow.karoo;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.os.SystemClock;
+import android.os.Looper;
+import java.time.Duration;
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -15,6 +17,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
 import static org.junit.Assert.*;
+import static org.robolectric.Shadows.shadowOf;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
@@ -109,6 +112,47 @@ public class CameraModelLinkTest {
             assertNull(link.cameraModel);
             assertTrue(link.message.contains("declined"));
             assertTrue(drainWrites(link).isEmpty());
+        }
+    }
+
+    @Test public void approvalWithoutLiveStatusTimesOutInsteadOfWaitingForever() throws Exception {
+        CameraLink link = link();
+        approve(link, CameraModel.ACTION_5_PRO.deviceId, 0);
+        assertTrue(link.ready);
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(15));
+        assertFalse(link.ready);
+        assertFalse(link.fresh());
+        assertTrue(link.message.contains("approved pairing, but no live status"));
+        assertTrue(drainWrites(link).isEmpty());
+    }
+
+    @Test public void liveStatusCancelsInitialStatusDeadline() throws Exception {
+        CameraLink link = link();
+        approve(link, CameraModel.ACTION_5_PRO.deviceId, 0);
+        // Robolectric supplies a local GATT object; no physical Bluetooth connection is made.
+        android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+        BluetoothDevice device = adapter.getRemoteDevice("02:11:22:33:44:55");
+        android.bluetooth.BluetoothGatt gatt = device.connectGatt(RuntimeEnvironment.getApplication(), false,
+            new android.bluetooth.BluetoothGattCallback() {});
+        Field field = CameraLink.class.getDeclaredField("gatt");
+        field.setAccessible(true); field.set(link, gatt);
+        byte[] status = new byte[38]; status[0] = 1; status[1] = 1;
+        Method receive = CameraLink.class.getDeclaredMethod("receive", Protocol.Frame.class);
+        receive.setAccessible(true);
+        receive.invoke(link, new Protocol.Decoder().accept(Protocol.encode(0, 72, 0x1d, 2, status)).get(0));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(16));
+        assertTrue(link.ready);
+        link.close();
+    }
+
+    @Test public void malformedApprovalReportsTheProblemImmediately() throws Exception {
+        for (byte[] payload : new byte[][]{new byte[29], new byte[33]}) {
+            CameraLink link = link();
+            Method receive = CameraLink.class.getDeclaredMethod("receive", Protocol.Frame.class);
+            receive.setAccessible(true);
+            receive.invoke(link, new Protocol.Decoder().accept(Protocol.encode(2, 71, 0, 0x19, payload)).get(0));
+            assertFalse(link.ready);
+            assertTrue(link.message.contains(payload.length < 33 ? "incomplete final approval" : "unexpected pairing verification mode"));
         }
     }
 }
