@@ -30,6 +30,8 @@ final class CameraLink {
     private boolean writing, scanning;
     private final Set<String> scanResults = new HashSet<>();
     private boolean reconnecting;
+    private boolean waitingForMtu;
+    private int attPayload = 20, notificationCount, protocolFrameCount;
     private Runnable writeTimeout, commandTimeout, connectTimeout;
     String message = "Turn on your DJI Osmo Action camera, then find it below.";
     CameraModel cameraModel;
@@ -116,11 +118,15 @@ final class CameraLink {
     }
     private void cancel(Runnable task) { if (task != null) handler.removeCallbacks(task); }
     private void connectionDeadline(String error, long delayMs) {
+        connectionDeadline(() -> error, delayMs);
+    }
+    private void connectionDeadline(java.util.function.Supplier<String> error, long delayMs) {
         cancel(connectTimeout);
-        connectTimeout = () -> fail(error);
+        connectTimeout = () -> fail(error.get());
         handler.postDelayed(connectTimeout, delayMs);
     }
     void close() {
+        waitingForMtu = false; attPayload = 20; notificationCount = protocolFrameCount = 0;
         gpsStreaming = false; requestedPriority = -1; gpsWriteRate.clear();
         cameraModel = null;
         powerMode = -1; gpsFragments = 0; lastGpsWriteAt = 0;
@@ -137,7 +143,19 @@ final class CameraLink {
             handler.post(() -> {
                 if (g != gatt) return;
                 if (status != BluetoothGatt.GATT_SUCCESS || newState == BluetoothProfile.STATE_DISCONNECTED) { fail("Camera disconnected. Recording may continue on the camera."); return; }
-                if (newState == BluetoothProfile.STATE_CONNECTED && !g.discoverServices()) fail("Cannot discover camera services.");
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    // DJI's demo exchanges MTU before discovery. In particular, approval is 51 bytes.
+                    waitingForMtu = true;
+                    if (!g.requestMtu(512)) { waitingForMtu = false; discover(g); }
+                }
+            });
+        }
+        @Override public void onMtuChanged(BluetoothGatt g, int mtu, int status) {
+            handler.post(() -> {
+                if (g != gatt) return;
+                if (status == BluetoothGatt.GATT_SUCCESS && mtu >= 23)
+                    attPayload = Math.min(mtu - 3, 512);
+                if (waitingForMtu) { waitingForMtu = false; discover(g); }
             });
         }
         @Override public void onServicesDiscovered(BluetoothGatt g, int status) {
@@ -172,7 +190,9 @@ final class CameraLink {
                 } else for (int i = 0; i < 6; i++) identity[i] = (byte) Integer.parseInt(saved.substring(i * 2, i * 2 + 2), 16);
                 int code = new SecureRandom().nextInt(10000);
                 report(String.format(Locale.ROOT, reconnecting ? "Reconnecting… If the camera asks, confirm code %04d." : "Confirm code %04d on the camera.", code));
-                connectionDeadline("No final approval received from camera. If you confirmed the code, Crow did not receive a usable approval message. Use Find camera to retry.", 45000);
+                connectionDeadline(() -> "No final approval received from camera. BLE notifications: " + notificationCount
+                    + "; decoded frames: " + protocolFrameCount + "; ATT payload: " + attPayload
+                    + " bytes. Use Find camera to retry.", 45000);
                 send(2, ++sequence, 0, 0x19, Protocol.pairing(identity, code, reconnecting));
             });
         }
@@ -191,26 +211,38 @@ final class CameraLink {
         }
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c) {
             byte[] value = c.getValue();
-            if (value == null) return;
-            byte[] copy = value.clone();
-            handler.post(() -> {
-                if (g != gatt) return;
-                for (Protocol.Frame frame : decoder.accept(copy)) {
-                    if (g != gatt) break;
-                    receive(frame);
-                }
-            });
+            notification(g, value);
+        }
+        @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c, byte[] value) {
+            // API 33+ supplies an immutable-at-callback snapshot rather than the mutable characteristic value.
+            notification(g, value);
         }
     };
+    private void discover(BluetoothGatt g) {
+        if (!g.discoverServices()) fail("Cannot discover camera services.");
+    }
+    private void notification(BluetoothGatt g, byte[] value) {
+        if (value == null) return;
+        byte[] copy = value.clone();
+        handler.post(() -> {
+            if (g != gatt) return;
+            notificationCount++;
+            for (Protocol.Frame frame : decoder.accept(copy)) {
+                if (g != gatt) break;
+                protocolFrameCount++;
+                receive(frame);
+            }
+        });
+    }
     private void send(int type, int seq, int set, int id, byte[] payload) {
         byte[] frame = Protocol.encode(type, seq, set, id, payload);
-        // Default ATT MTU of 23 permits 20 data bytes; serialize every fragment.
-        for (int p = 0; p < frame.length; p += 20) writes.add(Arrays.copyOfRange(frame, p, Math.min(p + 20, frame.length)));
+        // Use the negotiated payload; retain 20-byte fragmentation when MTU exchange fails.
+        for (int p = 0; p < frame.length; p += attPayload) writes.add(Arrays.copyOfRange(frame, p, Math.min(p + attPayload, frame.length)));
         pump();
     }
     boolean sendGps(byte[] payload) {
         if (payload.length != 48 || !fresh() || powerMode != 0 || busy || writing || !writes.isEmpty() || gatt == null || tx == null) return false;
-        gpsFragments = 4; // 66-byte DJI frame, using the existing 20-byte ATT fragments.
+        gpsFragments = (66 + attPayload - 1) / attPayload;
         send(0, ++sequence, 0, 0x17, payload);
         return gpsFragments > 0;
     }

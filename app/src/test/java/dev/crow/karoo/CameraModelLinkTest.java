@@ -155,4 +155,65 @@ public class CameraModelLinkTest {
             assertTrue(link.message.contains(payload.length < 33 ? "incomplete final approval" : "unexpected pairing verification mode"));
         }
     }
+
+    private void set(CameraLink link, String name, Object value) throws Exception {
+        Field field = CameraLink.class.getDeclaredField(name);
+        field.setAccessible(true); field.set(link, value);
+    }
+
+    private android.bluetooth.BluetoothGattCallback callbacks(CameraLink link) throws Exception {
+        Field field = CameraLink.class.getDeclaredField("callbacks");
+        field.setAccessible(true);
+        return (android.bluetooth.BluetoothGattCallback) field.get(link);
+    }
+
+    private android.bluetooth.BluetoothGatt attachGatt(CameraLink link) throws Exception {
+        BluetoothDevice device = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+            .getRemoteDevice("02:11:22:33:44:55");
+        android.bluetooth.BluetoothGatt gatt = device.connectGatt(RuntimeEnvironment.getApplication(), false, callbacks(link));
+        set(link, "gatt", gatt);
+        return gatt;
+    }
+
+    @Test @SuppressWarnings("unchecked") public void negotiatedMtuKeepsPairingInOneWriteAndFailureRetainsFallback() throws Exception {
+        for (int status : new int[]{0, android.bluetooth.BluetoothGatt.GATT_FAILURE}) {
+            CameraLink link = link();
+            android.bluetooth.BluetoothGatt gatt = attachGatt(link);
+            callbacks(link).onMtuChanged(gatt, 185, status);
+            shadowOf(Looper.getMainLooper()).idle();
+            byte[] payload = Protocol.pairing(new byte[6], 1234, false);
+            Method send = CameraLink.class.getDeclaredMethod("send", int.class, int.class, int.class, int.class, byte[].class);
+            send.setAccessible(true); send.invoke(link, 2, 1, 0, 0x19, payload);
+            Field field = CameraLink.class.getDeclaredField("writes"); field.setAccessible(true);
+            ArrayDeque<byte[]> writes = (ArrayDeque<byte[]>) field.get(link);
+            assertEquals(status == 0 ? 1 : 3, writes.size());
+            assertEquals(status == 0 ? 51 : 20, writes.peek().length);
+            assertArrayEquals(payload, drainWrites(link).get(0).payload);
+            link.close();
+        }
+    }
+
+    @Test public void bothAndroidNotificationCallbacksDeliverApprovalSnapshots() throws Exception {
+        for (boolean modern : new boolean[]{false, true}) {
+            CameraLink link = link();
+            android.bluetooth.BluetoothGatt gatt = attachGatt(link);
+            android.bluetooth.BluetoothGattCharacteristic characteristic = new android.bluetooth.BluetoothGattCharacteristic(
+                java.util.UUID.fromString("0000fff4-0000-1000-8000-00805f9b34fb"), 16, 0);
+            byte[] payload = new byte[33];
+            Protocol.put(payload, 0, CameraModel.ACTION_5_PRO.deviceId, 4); payload[26] = 2;
+            byte[] approval = Protocol.encode(2, 71, 0, 0x19, payload);
+            if (modern) {
+                characteristic.setValue(new byte[]{0x55}); // Must use callback bytes, not this stale value.
+                callbacks(link).onCharacteristicChanged(gatt, characteristic, approval);
+            } else {
+                characteristic.setValue(approval);
+                callbacks(link).onCharacteristicChanged(gatt, characteristic);
+            }
+            java.util.Arrays.fill(approval, (byte) 0); // Callback must copy before posting to the main thread.
+            shadowOf(Looper.getMainLooper()).idle();
+            assertTrue(link.ready);
+            assertSame(CameraModel.ACTION_5_PRO, link.cameraModel);
+            link.close();
+        }
+    }
 }
